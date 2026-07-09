@@ -1,55 +1,50 @@
-# Project checkpoint — Jul 8, 2026
+# Project checkpoint — Jul 9, 2026
 
-## What works (demo mode)
+## Live mode (Supabase)
 
 Run: `npm run dev` → http://localhost:3000
 
-`.env.local` has `DEMO_MODE=true` — no Supabase required.
+`.env.local` has `DEMO_MODE=false` — **7,139 activities** from TrainingPeaks summaries (TSS load, 2008–Jul 2026).
 
 ### Dashboard
 - Base / Tiredness / Restedness from rolling averages (42d / 7d)
-- Real Strava runs via `demo/strava-runs.json` (86 runs, Jan 1 – Jul 8 2026)
 - Walks & e-bikes excluded from load
 
 ### Planner
-- **Scrollable 2-week view** — ← Earlier / Today / Later → through all of 2026
-- Fatigue strip **updates for the period you're viewing** (as-of date shown when not today)
-- **Real Strava actuals** — pinned week + full year history from snapshot
-- **Google Calendar busy blocks** — gray bar per day (5am–8pm window); hover for times
-- Demo calendar: today = standup/lunch/1:1; **tomorrow = 8–9am + 3–4pm busy**; CSA pickup transparent
+- **Scrollable 4-week view** — ← Earlier / Today / Later → through full history
+- Fatigue strip updates for the period you're viewing
+- Google Calendar busy blocks (when OAuth connected)
 - Planned workout CRUD, activity detail modal + feel/RPE
-- Races: Truckee Half Sep 13, Gran Fondo Oct 4
 
-### Other pages
-- Settings (framework), Races, Connect (Strava via chilli-journal + Google OAuth stubs)
+### Connect
+- Status API shows activity count, Google/ingest config
+- Google Calendar OAuth (needs `GOOGLE_CLIENT_ID/SECRET`)
+- Strava ongoing sync via chilli-journal webhook → tracker ingest
 
-## Refresh Strava demo data
+## Commands
 
 ```bash
-CHILLI_JOURNAL_DIR="/path/to/chilli-journal" npm run fetch-strava-runs
+npm run dev
+npm run verify-supabase
+npm run import-trainingpeaks          # reimport TP summaries
+npm run import-trainingpeaks -- --replace-tp
+npm run recompute-load                # populate daily_load cache
 ```
 
-Uses chilli-journal `.env.local` + Supabase Strava token. Restart dev server after.
+## Go-live remaining
 
-## Not done yet (live mode)
+- [x] Supabase + schema
+- [x] TrainingPeaks history import (7,139 workouts)
+- [ ] `TRACKER_INGEST_SECRET` + chilli-journal webhook forward → see [docs/GO_LIVE.md](docs/GO_LIVE.md)
+- [ ] Google Calendar OAuth credentials
+- [ ] Vercel deploy + production env vars
+- [ ] `npm run recompute-load` (optional cache)
 
-- [ ] Supabase project + run `supabase/schema.sql` → see [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)
-- [ ] `npm run verify-supabase` then `npm run backfill-strava`
-- [ ] Wire chilli-journal webhook → tracker ingest ([INTEGRATION.md](INTEGRATION.md))
-- [ ] Google Calendar OAuth with real credentials (`GOOGLE_CLIENT_ID/SECRET`)
-- [x] Phase 0: TrainingPeaks CSV export
-
-## Key files touched recently
+## Key files
 
 | Area | Files |
 |------|-------|
-| Planner navigation + view-aware metrics | `components/PlannerClient.tsx`, `lib/load.ts` |
-| Strava demo snapshot | `demo/strava-runs.json`, `lib/demo.ts`, `scripts/fetch-strava-runs.mjs` |
-| Calendar busy blocks | `lib/availability.ts`, `components/CalendarBusyStrip.tsx`, `lib/google.ts` |
-| E-bike exclusion | `lib/excluded-sports.ts`, `lib/strava-ingest.ts` |
-
-## Tomorrow — suggested next steps
-
-1. Connect live Supabase + test ingest, or continue polishing demo UX
-2. Apply chilli-journal integration from `docs/chilli-journal/`
-3. Live Google Calendar sync (Connect page) and verify busy blocks match real calendar
+| Planner (4-week) | `components/PlannerClient.tsx` |
+| TP import | `scripts/import-trainingpeaks.ts`, `lib/trainingpeaks-import.ts` |
+| Go-live | `docs/GO_LIVE.md`, `app/api/connect/status/route.ts` |
+| Chilli integration | `docs/chilli-journal/`, `INTEGRATION.md` |

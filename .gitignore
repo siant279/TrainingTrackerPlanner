@@ -22,6 +22,8 @@
 
 # misc
 .DS_Store
+.tmp-fit-sample/
+Training Peaks Exports/
 *.pem
 
 # debug

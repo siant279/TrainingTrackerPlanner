@@ -13,7 +13,8 @@ const ICONS: Record<string, string> = { Run:'🏃', TrailRun:'⛰️', Ride:'�
 const icon = (s: string) => ICONS[s] || '•'
 
 const DEMO_HISTORY_START = '2026-01-01'
-const BLOCK_DAYS = 14
+const BLOCK_DAYS = 28
+const WEEKS_IN_VIEW = 4
 
 function planEndKey(todayKey: string): string {
   const year = parseCalendarDate(todayKey).getFullYear()
@@ -129,13 +130,15 @@ export function PlannerClient() {
   function weekLabel(w: number, wkStartKey: string): string {
     if (viewBlockOffset === 0 && w === 0) return 'This week'
     if (viewBlockOffset === 0 && w === 1) return 'Next week'
+    if (viewBlockOffset === 0 && w === 2) return 'In 2 weeks'
+    if (viewBlockOffset === 0 && w === 3) return 'In 3 weeks'
     const d = parseCalendarDate(wkStartKey)
     return `Week of ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
   }
 
   if (!framework) return <p className="text-[#667085] py-10 text-center">Loading planner…</p>
 
-  const weeks = [0, 1]
+  const weeks = Array.from({ length: WEEKS_IN_VIEW }, (_, i) => i)
   return (
     <div>
       <h1 className="text-xl font-bold mb-1">Training Planner</h1>

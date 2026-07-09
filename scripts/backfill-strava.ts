@@ -8,6 +8,7 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { resolveChilliJournalDir } from '../lib/chilli-journal-path'
 import { isExcludedSport } from '../lib/excluded-sports'
 import { parseFramework } from '../lib/framework'
 import { mapStravaToActivity } from '../lib/strava-ingest'
@@ -65,32 +66,40 @@ async function getJournalToken(
   return data.access_token as string
 }
 
+async function fetchWithRetry(url: string, init: RequestInit, label: string): Promise<Response> {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const resp = await fetch(url, init)
+    if (resp.status !== 429) return resp
+    const retryAfter = Number(resp.headers.get('retry-after') || 0)
+    const waitMs = retryAfter > 0 ? retryAfter * 1000 : Math.min(60_000, 5_000 * 2 ** attempt)
+    console.log(`  Rate limited (${label}) — waiting ${Math.round(waitMs / 1000)}s…`)
+    await sleep(waitMs)
+  }
+  throw new Error(`${label} failed after retries: 429`)
+}
+
 async function fetchActivityDetail(token: string, id: number): Promise<StravaActivityPayload> {
-  const resp = await fetch(`${STRAVA_BASE}/activities/${id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const resp = await fetchWithRetry(
+    `${STRAVA_BASE}/activities/${id}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+    `Activity ${id}`,
+  )
   if (!resp.ok) throw new Error(`Activity ${id} fetch failed: ${resp.status}`)
   return resp.json()
 }
 
 async function main() {
-  const cj = process.env.CHILLI_JOURNAL_DIR
-  if (!cj) throw new Error('Set CHILLI_JOURNAL_DIR to your chilli-journal repo path')
-
-  const trackerEnv: Record<string, string> = {}
-  for (const line of readFileSync(join(process.cwd(), '.env.local'), 'utf8').split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eq = trimmed.indexOf('=')
-    if (eq <= 0) continue
-    trackerEnv[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '')
+  loadEnv(join(process.cwd(), '.env.local'))
+  const trackerUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const trackerKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!trackerUrl || !trackerKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local')
   }
 
-  const trackerUrl = trackerEnv.NEXT_PUBLIC_SUPABASE_URL
-  const trackerKey = trackerEnv.SUPABASE_SERVICE_ROLE_KEY
-  if (!trackerUrl || !trackerKey) throw new Error('Missing tracker Supabase vars in .env.local')
-
+  const cj = resolveChilliJournalDir()
+  console.log(`Using chilli-journal at: ${cj}`)
   loadEnv(join(cj, '.env.local'))
+
   const journalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const journalKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const stravaClientId = process.env.STRAVA_CLIENT_ID
@@ -113,9 +122,11 @@ async function main() {
 
   while (page <= 100) {
     const params = new URLSearchParams({ per_page: '100', page: String(page) })
-    const resp = await fetch(`${STRAVA_BASE}/athlete/activities?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const resp = await fetchWithRetry(
+      `${STRAVA_BASE}/athlete/activities?${params}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+      `list page ${page}`,
+    )
     if (!resp.ok) throw new Error(`Strava list page ${page} failed: ${resp.status}`)
     const summaries = await resp.json() as StravaActivityPayload[]
     if (!summaries.length) break
@@ -130,7 +141,7 @@ async function main() {
       if (error) throw new Error(`Upsert ${summary.id}: ${error.message}`)
       imported++
       if (imported % 25 === 0) console.log(`  …${imported} imported`)
-      await sleep(150)
+      await sleep(250)
     }
 
     if (summaries.length < 100) break
