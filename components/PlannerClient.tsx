@@ -34,7 +34,7 @@ export function PlannerClient() {
   const [busy, setBusy] = useState<Record<string, { startMin: number; endMin: number; title: string }[]>>({})
   const [feelIds, setFeelIds] = useState<Set<number>>(new Set())
   const [modal, setModal] = useState<{ date: string; item?: PlannedWorkout } | null>(null)
-  const [activityDetailId, setActivityDetailId] = useState<number | null>(null)
+  const [activityDetail, setActivityDetail] = useState<{ id: number; plan?: PlannedWorkout } | null>(null)
   const [form, setForm] = useState({ sport: 'Run', type: 'Easy', dur: '', desc: '', load: '' })
   const [viewBlockOffset, setViewBlockOffset] = useState(0)
   const [earliestActivity, setEarliestActivity] = useState<string | null>(null)
@@ -273,7 +273,7 @@ export function PlannerClient() {
                           entry={entry}
                           framework={framework}
                           feelIds={feelIds}
-                          onActivityClick={setActivityDetailId}
+                          onActivityClick={(id, plan) => setActivityDetail({ id, plan })}
                           onPlanClick={openEdit}
                         />
                       ))}
@@ -312,11 +312,12 @@ export function PlannerClient() {
         </div>
       )}
 
-      {activityDetailId != null && framework && (
+      {activityDetail && framework && (
         <ActivityDetailModal
-          activityId={activityDetailId}
+          activityId={activityDetail.id}
+          matchedPlan={activityDetail.plan}
           framework={framework}
-          onClose={() => setActivityDetailId(null)}
+          onClose={() => setActivityDetail(null)}
           onSaved={() => { loadAll(); loadViewData() }}
         />
       )}

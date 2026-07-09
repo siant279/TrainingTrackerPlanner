@@ -2,12 +2,51 @@
 import { useEffect, useState } from 'react'
 import { CAT_TAG, classifyActual } from '@/lib/classify'
 import { activityDateKey } from '@/lib/dates'
-import type { Activity, ActivityCategory, FeelEntry, Framework } from '@/lib/types'
+import type { Activity, ActivityCategory, FeelEntry, Framework, PlannedWorkout } from '@/lib/types'
 
 function fmtDuration(sec: number) {
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
   return h ? `${h}h ${m}m` : `${m}m`
+}
+
+function fmtDelta(n: number, unit = ''): string {
+  if (n === 0) return '—'
+  const sign = n > 0 ? '+' : ''
+  return `${sign}${unit === 'm' ? Math.round(n) : Math.round(n * 10) / 10}${unit}`
+}
+
+function PlanVsActual({ plan, activity }: { plan: PlannedWorkout; activity: Activity }) {
+  const planMin = plan.duration_min
+  const actMin = Math.round(activity.moving_time / 60)
+  const loadDelta = plan.target_load != null ? activity.load - plan.target_load : null
+  const timeDelta = planMin != null ? actMin - planMin : null
+
+  return (
+    <div className="mb-4 rounded-lg border border-green-200 bg-green-50/50 p-3">
+      <h4 className="font-semibold text-sm mb-2 text-green-900">Planned vs completed</h4>
+      <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-xs">
+        <div className="text-[10px] uppercase text-[#667085] font-semibold" />
+        <div className="text-[10px] uppercase text-[#9a3412] font-semibold">Planned</div>
+        <div className="text-[10px] uppercase text-[#1e40af] font-semibold">Completed</div>
+
+        <div className="text-[#667085]">Load</div>
+        <div>{plan.target_load ?? '—'}</div>
+        <div className="font-semibold">{activity.load}{loadDelta != null && <span className="text-[#667085] font-normal ml-1">({fmtDelta(loadDelta)})</span>}</div>
+
+        <div className="text-[#667085]">Duration</div>
+        <div>{planMin != null ? `${planMin}m` : '—'}</div>
+        <div className="font-semibold">{fmtDuration(activity.moving_time)}{timeDelta != null && <span className="text-[#667085] font-normal ml-1">({fmtDelta(timeDelta, 'm')})</span>}</div>
+
+        <div className="text-[#667085]">Session</div>
+        <div>{plan.type} {plan.sport}</div>
+        <div>{activity.sport_type.replace(/([A-Z])/g, ' $1').trim()}</div>
+      </div>
+      {plan.description && (
+        <p className="text-xs text-[#667085] mt-2 border-t border-green-200/80 pt-2">Plan note: {plan.description}</p>
+      )}
+    </div>
+  )
 }
 
 function fmtElevation(m: number | null) {
@@ -24,26 +63,31 @@ function fmtDistance(m: number | null, sport: string) {
 interface Props {
   activityId: number
   framework: Framework
+  matchedPlan?: PlannedWorkout | null
   onClose: () => void
   onSaved: () => void
 }
 
-export function ActivityDetailModal({ activityId, framework, onClose, onSaved }: Props) {
+export function ActivityDetailModal({ activityId, framework, matchedPlan, onClose, onSaved }: Props) {
   const [activity, setActivity] = useState<Activity | null>(null)
   const [feel, setFeel] = useState<FeelEntry | null>(null)
+  const [plan, setPlan] = useState<PlannedWorkout | null>(matchedPlan ?? null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ rpe: '', feel: 'normal', soreness: '', note: '', category: '' })
 
   useEffect(() => {
     setLoading(true)
+    setPlan(matchedPlan ?? null)
     fetch(`/api/activities/${activityId}`)
       .then((r) => r.json())
       .then((d) => {
         const a = d.activity as Activity
         const f = d.feel as FeelEntry | null
+        const p = (d.planned as PlannedWorkout | null) ?? matchedPlan ?? null
         setActivity(a)
         setFeel(f)
+        setPlan(p)
         const autoCat = classifyActual(a.sport_type, a.name ?? '', a.description, a.moving_time, framework)
         setForm({
           rpe: String(f?.rpe ?? a.perceived_exertion ?? ''),
@@ -55,7 +99,7 @@ export function ActivityDetailModal({ activityId, framework, onClose, onSaved }:
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [activityId, framework])
+  }, [activityId, framework, matchedPlan])
 
   async function save() {
     setSaving(true)
@@ -106,6 +150,8 @@ export function ActivityDetailModal({ activityId, framework, onClose, onSaved }:
                 Open in Strava ↗
               </a>
             </div>
+
+            {plan && <PlanVsActual plan={plan} activity={activity} />}
 
             <div className="grid grid-cols-2 gap-2 mb-4 text-sm">
               <div className="bg-[#f7f8fa] rounded-lg p-3"><div className="text-[10px] uppercase text-[#667085] font-semibold">Load</div><div className="text-xl font-bold text-[#2563eb]">{activity.load}</div></div>

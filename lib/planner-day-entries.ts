@@ -21,10 +21,11 @@ export function buildDayEntries(
   for (const p of plans) {
     if (p.matched_activity_id == null) continue
     const a = activities.find((x) => x.id === p.matched_activity_id)
-    if (!a) continue
-    entries.push({ kind: 'merged', plan: p, activity: a })
+    if (a) {
+      entries.push({ kind: 'merged', plan: p, activity: a })
+      consumedActs.add(a.id)
+    }
     consumedPlans.add(p.id)
-    consumedActs.add(a.id)
   }
 
   const openPlans = plans.filter((p) => !consumedPlans.has(p.id) && p.status === 'planned')

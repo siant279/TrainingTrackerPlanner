@@ -225,7 +225,8 @@ export const demoStore = {
     const activity = s.activities.find((a) => a.id === id)
     if (!activity) return null
     const feel = s.feels.find((f) => f.activity_id === id) ?? null
-    return { activity, feel }
+    const planned = s.planned.find((p) => p.matched_activity_id === id) ?? null
+    return { activity, feel, planned }
   },
   getCalendarEvents(from?: string | null, to?: string | null) {
     return buildSeedCalendarEvents().filter((ev) => {
