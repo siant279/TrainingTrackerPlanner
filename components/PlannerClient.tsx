@@ -1,16 +1,16 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityDetailModal } from '@/components/ActivityDetailModal'
-import { CAT_TAG, classifyActual, classifyPlanned, targetMin, TARGET_KEYS } from '@/lib/classify'
+import { PlannerDayEntry } from '@/components/PlannerDayEntry'
+import { classifyActual, classifyPlanned, targetMin, TARGET_KEYS } from '@/lib/classify'
 import { availabilityForDay, availColor, buildBusyMap, minLabel } from '@/lib/availability'
 import { CalendarBusyStrip } from '@/components/CalendarBusyStrip'
 import { activityDateKey, addCalendarDays, calendarDateKey, compareCalendarKeys, formatDateRange, mondayOf, parseCalendarDate } from '@/lib/dates'
+import { buildDayEntries } from '@/lib/planner-day-entries'
 import { buildDailyLoadMap, freshInterp, loadMetricsOnDate, metricsAsOfKey } from '@/lib/load'
 import type { Activity, Framework, PlannedWorkout, Race } from '@/lib/types'
 
 const SPORTS = ['Run','TrailRun','Ride','GravelRide','MountainBikeRide','VirtualRide','Swim','WeightTraining','Yoga','Other']
-const ICONS: Record<string, string> = { Run:'🏃', TrailRun:'⛰️', Ride:'🚴', WeightTraining:'🏋️', Swim:'🏊' }
-const icon = (s: string) => ICONS[s] || '•'
 
 const DEMO_HISTORY_START = '2026-01-01'
 const BLOCK_DAYS = 28
@@ -192,8 +192,27 @@ export function PlannerClient() {
         TARGET_KEYS.forEach((k) => { done[k] = 0; plnd[k] = 0 })
         let actHrs = 0, planHrs = 0
         dateKeys.forEach((key) => {
-          planned.filter((p) => p.date === key).forEach((p) => { planSum += p.target_load ?? 0; planHrs += (p.duration_min ?? 0) / 60; const c = classifyPlanned(p.sport, p.type); if (c in done) plnd[c]++ })
-          ;(actuals[key] ?? []).forEach((a) => { actSum += a.load; actHrs += a.moving_time / 3600; const c = classifyActual(a.sport_type, a.name ?? '', a.description, a.moving_time, framework); if (c in done) done[c]++ })
+          const dayPlans = planned.filter((p) => p.date === key)
+          const dayActs = actuals[key] ?? []
+          const entries = buildDayEntries(dayPlans, dayActs, framework)
+          for (const e of entries) {
+            if (e.kind === 'merged') {
+              actSum += e.activity.load
+              actHrs += e.activity.moving_time / 3600
+              const c = classifyActual(e.activity.sport_type, e.activity.name ?? '', e.activity.description, e.activity.moving_time, framework)
+              if (c in done) done[c]++
+            } else if (e.kind === 'planned') {
+              planSum += e.plan.target_load ?? 0
+              planHrs += (e.plan.duration_min ?? 0) / 60
+              const c = classifyPlanned(e.plan.sport, e.plan.type)
+              if (c in plnd) plnd[c]++
+            } else {
+              actSum += e.activity.load
+              actHrs += e.activity.moving_time / 3600
+              const c = classifyActual(e.activity.sport_type, e.activity.name ?? '', e.activity.description, e.activity.moving_time, framework)
+              if (c in done) done[c]++
+            }
+          }
         })
         const projHrs = actHrs + planHrs
         const maxSum = Math.max(planSum, actSum, 1)
@@ -244,31 +263,19 @@ export function PlannerClient() {
                       </div>
                     )}
                     <div className="flex flex-col gap-1 flex-1">
-                      {(actuals[key] ?? []).map((a) => {
-                        const cat = classifyActual(a.sport_type, a.name ?? '', a.description, a.moving_time, framework)
-                        const tag = CAT_TAG[cat]
-                        const hasFeel = feelIds.has(a.id)
-                        return (
-                          <div
-                            key={a.id}
-                            role="button"
-                            tabIndex={0}
-                            className="bg-[#eff4ff] text-[#1e40af] rounded px-1 py-0.5 cursor-pointer hover:bg-[#dbeafe] relative"
-                            onClick={() => setActivityDetailId(a.id)}
-                            onKeyDown={(e) => e.key === 'Enter' && setActivityDetailId(a.id)}
-                            title={a.name ?? undefined}
-                          >
-                            {!hasFeel && <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-400" title="Feel not logged" />}
-                            {icon(a.sport_type)} {(a.name ?? a.sport_type).slice(0, 18)}{(a.name && a.name.length > 18) ? '…' : ''}
-                            {tag && <span className="ml-1 text-[9px] uppercase bg-black/5 px-1 rounded">{tag}</span>}
-                            <b className="ml-0.5">{a.load}</b>
-                          </div>
-                        )
-                      })}
-                      {planned.filter((p) => p.date === key).map((p) => (
-                        <div key={p.id} className="bg-[#fff7ed] text-[#9a3412] border border-dashed border-orange-300 rounded px-1 py-0.5 cursor-pointer" onClick={() => openEdit(key, p)}>
-                          {icon(p.sport)} {p.description || p.sport} ◇{p.target_load ?? 0}
-                        </div>
+                      {buildDayEntries(
+                        planned.filter((p) => p.date === key),
+                        actuals[key] ?? [],
+                        framework,
+                      ).map((entry) => (
+                        <PlannerDayEntry
+                          key={entry.kind === 'merged' ? `m-${entry.plan.id}` : entry.kind === 'planned' ? `p-${entry.plan.id}` : `a-${entry.activity.id}`}
+                          entry={entry}
+                          framework={framework}
+                          feelIds={feelIds}
+                          onActivityClick={setActivityDetailId}
+                          onPlanClick={openEdit}
+                        />
                       ))}
                     </div>
                     <button className="text-[#2563eb] text-left mt-1" onClick={() => openAdd(key)}>+ plan</button>

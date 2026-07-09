@@ -21,7 +21,7 @@ export async function ingestStravaActivity(raw: StravaActivityPayload, aspect: '
 
   const activityDate = activityDateKey(row)
   const category = effectiveCategory(row.category as ActivityCategory, row.category_override as ActivityCategory | null)
-  const { data: planned } = await supabase.from('planned_workouts').select('id,date,sport,type,status').eq('status', 'planned')
+  const { data: planned } = await supabase.from('planned_workouts').select('*').eq('status', 'planned')
   const match = findBestPlannedMatch(planned ?? [], activityDate, row.sport_type, category)
   if (match) {
     await supabase.from('planned_workouts').update({ status: 'completed', matched_activity_id: id }).eq('id', match.id)
