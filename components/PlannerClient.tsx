@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityDetailModal } from '@/components/ActivityDetailModal'
 import { PlannerDayEntry } from '@/components/PlannerDayEntry'
+import { PlannerRaceEntry } from '@/components/PlannerRaceEntry'
 import { classifyActual, classifyPlanned, targetMin, TARGET_KEYS } from '@/lib/classify'
 import { availabilityForDay, availColor, buildBusyMap, minLabel } from '@/lib/availability'
 import { CalendarBusyStrip } from '@/components/CalendarBusyStrip'
@@ -52,11 +53,13 @@ export function PlannerClient() {
   const loadViewData = useCallback(async () => {
     const from = viewStartKey
     const to = viewEndKey
-    const [planR, calR] = await Promise.all([
+    const [planR, calR, raceR] = await Promise.all([
       fetch(`/api/planned-workouts?from=${from}&to=${to}`).then((r) => r.json()),
       fetch(`/api/calendar/events?from=${from}&to=${to}`).then((r) => r.json()).catch(() => ({ events: [] })),
+      fetch('/api/races').then((r) => r.json()),
     ])
     setPlanned(planR.planned ?? [])
+    setRaces(raceR.races ?? [])
     if (framework) setBusy(buildBusyMap(calR.events ?? [], framework))
   }, [viewStartKey, viewEndKey, framework])
 
@@ -82,6 +85,14 @@ export function PlannerClient() {
     if (!framework) return
     loadViewData()
   }, [framework, loadViewData])
+
+  useEffect(() => {
+    const refreshRaces = () => {
+      fetch('/api/races').then((r) => r.json()).then((d) => setRaces(d.races ?? []))
+    }
+    window.addEventListener('focus', refreshRaces)
+    return () => window.removeEventListener('focus', refreshRaces)
+  }, [])
 
   const actuals: Record<string, Activity[]> = {}
   for (const a of activities) {
@@ -245,12 +256,11 @@ export function PlannerClient() {
                 const isToday = key === todayKey
                 const isPast = key < todayKey
                 const av = availabilityForDay(busy[key], framework)
-                const race = races.find((r) => r.date === key)
+                const dayRaces = races.filter((r) => r.date === key)
                 return (
-                  <div key={key} className={`border rounded-lg p-1.5 min-h-36 flex flex-col text-xs ${isToday ? 'border-[#2563eb] shadow-[inset_0_0_0_1px_#2563eb]' : ''} ${isPast ? 'bg-[#fafbfc]' : ''}`}>
+                  <div key={key} className={`border rounded-lg p-1.5 min-h-36 flex flex-col text-xs ${isToday ? 'border-[#2563eb] shadow-[inset_0_0_0_1px_#2563eb]' : ''} ${isPast ? 'bg-[#fafbfc]' : ''} ${dayRaces.length ? 'ring-1 ring-red-200/80' : ''}`}>
                     <div className={`flex justify-between font-semibold text-[#667085] mb-1 ${isToday ? 'text-[#2563eb]' : ''}`}>
                       <span>{dowLabel} {d.getDate()}</span>
-                      {race && <span className="text-[10px] text-red-600" title={race.name}>🏁 {race.priority}</span>}
                     </div>
                     <CalendarBusyStrip blocks={busy[key]} framework={framework} />
                     {!isPast && (
@@ -263,6 +273,9 @@ export function PlannerClient() {
                       </div>
                     )}
                     <div className="flex flex-col gap-1 flex-1">
+                      {dayRaces.map((race) => (
+                        <PlannerRaceEntry key={race.id} race={race} />
+                      ))}
                       {buildDayEntries(
                         planned.filter((p) => p.date === key),
                         actuals[key] ?? [],
