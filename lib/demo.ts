@@ -229,7 +229,7 @@ export const demoStore = {
   },
   getCalendarEvents(from?: string | null, to?: string | null) {
     return buildSeedCalendarEvents().filter((ev) => {
-      const key = ev.start?.dateTime?.slice(0, 10) ?? ev.start?.date
+      const key = ev.start?.dateTime?.slice(0, 10) ?? (ev.start as { date?: string })?.date
       if (!key) return false
       return (!from || key >= from) && (!to || key <= to)
     })

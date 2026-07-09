@@ -33,11 +33,11 @@ Uses chilli-journal `.env.local` + Supabase Strava token. Restart dev server aft
 
 ## Not done yet (live mode)
 
-- [ ] Supabase project + run `supabase/schema.sql`
+- [ ] Supabase project + run `supabase/schema.sql` → see [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)
+- [ ] `npm run verify-supabase` then `npm run backfill-strava`
 - [ ] Wire chilli-journal webhook → tracker ingest ([INTEGRATION.md](INTEGRATION.md))
 - [ ] Google Calendar OAuth with real credentials (`GOOGLE_CLIENT_ID/SECRET`)
-- [ ] Set `DEMO_MODE=false` + Supabase env vars
-- [ ] Phase 0: TrainingPeaks CSV export (user handling separately)
+- [x] Phase 0: TrainingPeaks CSV export
 
 ## Key files touched recently
 
