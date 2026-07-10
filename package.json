@@ -12,6 +12,7 @@
     "import-trainingpeaks": "tsx scripts/import-trainingpeaks.ts",
     "match-planned": "tsx scripts/match-planned.ts",
     "recompute-load": "tsx scripts/recompute-load.ts",
+    "sync-recent": "tsx scripts/sync-recent.ts",
     "verify-supabase": "tsx scripts/verify-supabase.ts",
     "fetch-strava-runs": "node scripts/fetch-strava-runs.mjs"
   },
