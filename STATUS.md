@@ -1,7 +1,7 @@
 # Project checkpoint — Jul 13, 2026
 
 Production: **https://training-tracker-planner-kappa.vercel.app**  
-Repo: `siant279/TrainingTrackerPlanner` · branch `main` @ `2299a25`  
+Repo: `siant279/TrainingTrackerPlanner` · branch `main` @ `4dcf055`  
 Data: **~7,140 activities** (TrainingPeaks history + live Strava ingest)
 
 ---
