@@ -178,7 +178,12 @@ export function PlannerClient() {
       const resp = await fetch('/api/structured-workouts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, contents }),
+        body: JSON.stringify({
+          filename: file.name,
+          contents,
+          // .erg prefers FTP= from the file header; .fit needs an authoring FTP for absolute watts
+          ...(ext === 'fit' ? { ftpForErg: form.displayFtp || 205 } : {}),
+        }),
       })
       const data = await resp.json() as {
         structured?: StructuredWorkout
