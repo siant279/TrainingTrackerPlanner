@@ -8,22 +8,27 @@ export function isJournalActivity(sportType: string | undefined, _name: string):
   return sportType === 'Walk'
 }
 
+export type TrackerForwardResult =
+  | { status: 'ok' }
+  | { status: 'skipped'; reason: 'not_configured' | 'walk' }
+
 export async function forwardActivityToTracker(
   activityId: number,
   aspect: 'create' | 'update' | 'delete',
-) {
+): Promise<TrackerForwardResult> {
   if (!TRACKER_INGEST_URL || !TRACKER_INGEST_SECRET) {
     console.warn('Tracker ingest not configured — skipping forward')
-    return
+    return { status: 'skipped', reason: 'not_configured' }
   }
 
   let activity: Record<string, unknown> | null = null
   if (aspect !== 'delete') {
     const accessToken = await getValidAccessToken()
-    activity = await fetchActivity(accessToken, activityId)
-    const sportType = (activity.sport_type || activity.type) as string | undefined
-    const name = (activity.name as string) || ''
-    if (isJournalActivity(sportType, name)) return
+    const fetched = await fetchActivity(accessToken, activityId)
+    const sportType = (fetched.sport_type || fetched.type) as string | undefined
+    const name = (fetched.name as string) || ''
+    if (isJournalActivity(sportType, name)) return { status: 'skipped', reason: 'walk' }
+    activity = fetched as Record<string, unknown>
   }
 
   const resp = await fetch(TRACKER_INGEST_URL, {
@@ -38,4 +43,5 @@ export async function forwardActivityToTracker(
     const text = await resp.text().catch(() => '')
     throw new Error(`Tracker ingest failed: ${resp.status} ${text.slice(0, 200)}`)
   }
+  return { status: 'ok' }
 }

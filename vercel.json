@@ -1,5 +1,6 @@
 {
   "crons": [
+    { "path": "/api/cron/sync-strava", "schedule": "30 5 * * *" },
     { "path": "/api/cron/recompute-load", "schedule": "0 6 * * *" }
   ]
 }

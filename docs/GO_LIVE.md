@@ -61,7 +61,13 @@ Code changes (copy from `docs/chilli-journal/` or apply via integration branch):
 5. Update Google OAuth redirect URI to `https://your-app.vercel.app/api/google/callback`
 6. Update chilli-journal `TRACKER_INGEST_URL` to production ingest URL
 
-Cron is configured in `vercel.json` (`/api/cron/recompute-load` at 6:00 UTC).
+Cron is configured in `vercel.json`:
+- `/api/cron/sync-strava` at 5:30 UTC — pulls last 3 days from Strava (backup if webhook misses)
+- `/api/cron/recompute-load` at 6:00 UTC
+
+Tracker Vercel needs `JOURNAL_INTERNAL_SECRET` (same as chilli-journal) for the backup sync cron.
+
+Chilli-journal `webhook_ingest_logs` now records `tracker_forward_ok`, `tracker_forward_skipped`, and `tracker_forward_failed` for each activity event.
 
 ## 5. Verify
 

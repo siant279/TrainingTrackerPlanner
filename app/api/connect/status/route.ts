@@ -9,6 +9,7 @@ export async function GET() {
       activities: 0,
       googleConnected: false,
       ingestConfigured: false,
+    journalSyncConfigured: false,
       cronConfigured: false,
       googleConfigured: false,
     })
@@ -23,6 +24,7 @@ export async function GET() {
     activities: count ?? 0,
     googleConnected: Boolean(athlete?.google_refresh_token),
     ingestConfigured: Boolean(process.env.TRACKER_INGEST_SECRET),
+    journalSyncConfigured: Boolean(process.env.JOURNAL_INTERNAL_SECRET),
     cronConfigured: Boolean(process.env.CRON_SECRET),
     googleConfigured: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
   })

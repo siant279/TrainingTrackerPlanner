@@ -7,6 +7,7 @@ type Status = {
   activities: number
   googleConnected: boolean
   ingestConfigured: boolean
+  journalSyncConfigured: boolean
   cronConfigured: boolean
   googleConfigured: boolean
 }
@@ -72,8 +73,9 @@ export function ConnectClient() {
             <li>See <code className="bg-gray-100 px-1 rounded">docs/GO_LIVE.md</code> for deploy steps</li>
           </ul>
           {status && (
-            <p className="text-xs mt-2">
-              Ingest secret: {status.ingestConfigured ? '✓ configured' : '✗ not set'}
+            <p className="text-xs mt-2 space-y-0.5">
+              <span className="block">Ingest secret: {status.ingestConfigured ? '✓ configured' : '✗ not set'}</span>
+              <span className="block">Backup sync (cron): {status.journalSyncConfigured ? '✓ journal token API' : '✗ set JOURNAL_INTERNAL_SECRET'}</span>
             </p>
           )}
         </div>
