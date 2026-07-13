@@ -18,8 +18,11 @@ Plus three cheap, high-value extras confirmed for v1:
 4. **Post-activity feel/RPE** — pull Strava's Perceived Exertion + a quick in-app RPE/soreness/note.
 5. **Race markers** — a races table with date/priority, shown on the calendar with a countdown.
 6. **Editable framework settings** — weekly targets, thresholds, and day window editable in-app, not hard-coded.
+7. **Structured workout file import** — load a `.zwo`/`.erg`/`.mrc`/`.fit` structured-workout file, parse its steps into a normalized target profile, attach it to a planned workout, and render the target graph on the planner. *(§4.5)*
 
-**Explicitly deferred to v2+:** the adaptive auto-planner, periodization projection toward race day, the AI coach chat, and the power/pace-TSS precision upgrade. Design the schema so these slot in without a rewrite (notes inline below).
+**Scope boundary — import only, not push.** #7 is strictly *ingest + display + attach*. It does **not** include a structured-workout *builder* or *pushing* workouts to a head unit / Zwift / Strava — those remain out of scope (Strava is read-only per §2; head-unit export stays in v2+, Build-Plan Phase 6). Importing a file someone else (or a coach, or Cowork) produced is cheap and high-value; authoring and device-sync are the expensive parts we still defer.
+
+**Explicitly deferred to v2+:** the adaptive auto-planner, periodization projection toward race day, the AI coach chat, the power/pace-TSS precision upgrade, and the structured-workout *builder* / head-unit push. Design the schema so these slot in without a rewrite (notes inline below).
 
 The two prototype HTML files are the **source of truth** for the load math, classification rules, and planner UX. Lift formulas and markup directly.
 
@@ -97,6 +100,21 @@ planned_workouts(
   description text,
   status text default 'planned',  -- planned|completed|skipped
   matched_activity_id bigint,     -- FK activities.id once completed
+  structured_workout_id uuid,     -- FK structured_workouts.id (null = unstructured plan)
+  created_at
+)
+
+structured_workouts(                -- an imported structured file, normalized (§4.5)
+  id uuid primary key,
+  name text,
+  source_format text,             -- zwo|erg|mrc|fit
+  sport text default 'bike',
+  ftp_reference int,              -- FTP the absolute-watt formats were authored at; null for %FTP formats
+  duration_sec int,               -- total, computed from steps
+  target_metric text,             -- power_pct_ftp | power_watts | pace | hr  (v1: power_pct_ftp)
+  steps jsonb,                    -- normalized step list, see §4.5
+  original_filename text,
+  raw text,                       -- verbatim file contents, so we never lose fidelity
   created_at
 )
 
@@ -160,6 +178,33 @@ daily_load(                       -- computed nightly (or a materialized view)
 - Subtract remaining timed events from the window; report the **largest free block** + total free hours. Color: green ≥3h, amber 1.5–3h, red <1.5h.
 - Parse event clock time from the ISO string's `HH:MM` (tz-independent), as the prototype does.
 
+### 4.5 Structured workout file import
+
+Turn an uploaded structured-workout file into a normalized step profile stored on `structured_workouts`, attachable to a `planned_workout`.
+
+**Supported formats (v1):**
+- **`.zwo`** (Zwift XML) — *primary*. Steps are `<Warmup>`, `<SteadyState>`, `<Cooldown>`, `<IntervalsT>`, `<Ramp>`, `<FreeRide>`; power is a fraction of FTP (e.g. `0.88`). This is the cleanest to parse and FTP-independent — recommend it as the default.
+- **`.mrc`** — `[COURSE DATA]` time/percent points; power is **%FTP**. Interpolate linearly between points; a repeated timestamp is a vertical step.
+- **`.erg`** — same as `.mrc` but points are **absolute watts**; store `ftp_reference` so the graph can rescale.
+- **`.fit`** (workout sub-type) — binary; parse with a FIT SDK. Lower priority; gate behind the others if time-boxed.
+
+**Normalized `steps` shape** (target-metric-agnostic so pace/HR can slot in later):
+```json
+[ { "kind": "steady|ramp|interval|free",
+    "duration_sec": 480,
+    "target_low": 0.88, "target_high": 0.88,   // fraction of FTP for power_pct_ftp
+    "cadence": 90, "repeat": 3,                  // repeat/off fields only for interval
+    "on_sec": 480, "off_sec": 240,
+    "off_low": 0.68, "off_high": 0.68,
+    "label": "Sweet spot" } ]
+```
+- Always keep the verbatim file in `raw` — never rely solely on the parse, so re-export or re-parse stays lossless.
+- **FTP-relative is the internal truth.** Convert `.erg` absolute watts to %FTP on import using `ftp_reference`; render watts on demand using the athlete's *current* `athlete.ftp`. **Surface the FTP a file assumes** — a file authored at FTP 205 renders very differently against a stored FTP of 229 (a real gap in this athlete's own data). Show intended watts and let the user confirm/override the FTP used for display.
+- **Load estimate:** compute an IF/TSS-style estimate from the step profile (`Σ duration × target²` normalized) to prefill `planned_workouts.target_load`, so an imported file feeds the planner's weekly-load math without manual entry. Falls back to the existing Relative-Effort model for actuals.
+- **Validation on import:** step durations must sum to `duration_sec`; reject/flag files with zero-duration steps or targets outside 0–3.0 ×FTP.
+
+**UI:** on the planner's planned-workout editor, an "Attach structured file" control (drag-drop or picker) → parse → preview the target graph (small area chart of %FTP vs. time) → save. The planned row then shows a "structured" badge and the mini target graph.
+
 ---
 
 ## 5. Screens
@@ -167,7 +212,7 @@ daily_load(                       -- computed nightly (or a materialized view)
 1. **Connect** — reuse Strava token; connect Google Calendar.
 2. **Sync** — one-time backfill of Strava history (throttled) + live webhook. Compute `category`, `load`, `count_toward_load` on ingest.
 3. **Dashboard** — Base/Tiredness/Restedness cards, trend chart, weekly load, recent sessions, window selector (7/30/90/180/365). *(mirror `fitness-fatigue-dashboard`)*
-4. **Planner** — two-week grid; actuals + availability + weekly targets strip + planned CRUD (sport, type, duration, load, description); planned auto-matches to the completed activity. *(mirror `training-planner`)*
+4. **Planner** — two-week grid; actuals + availability + weekly targets strip + planned CRUD (sport, type, duration, load, description); planned auto-matches to the completed activity. Planned-workout editor also has **Attach structured file** (§4.5): import `.zwo`/`.erg`/`.mrc`/`.fit`, preview the target graph, auto-prefill target load. *(mirror `training-planner`)*
 5. **Feel entry** — after an activity syncs, capture RPE + feel + soreness + note; also read Strava `perceived_exertion`. Doubles as the category-confirm surface.
 6. **Races** — add/list races; show markers + countdown on the planner.
 7. **Settings** — edit the framework JSON via a form.
@@ -183,6 +228,7 @@ daily_load(                       -- computed nightly (or a materialized view)
 - **M4 — Calendar availability.** Google OAuth + availability calc into the planner.
 - **M5 — Framework + settings.** Weekly targets strip; editable settings screen driving all thresholds.
 - **M6 — Feel + races.** Feel/RPE entry (+ category override); races table + countdown markers.
+- **M7 — Structured import.** `structured_workouts` table + parsers (`.zwo` first, then `.mrc`/`.erg`, `.fit` if time); attach-to-planned UI with target-graph preview + auto load estimate (§4.5). Ships independently after M3 (planner) exists.
 
 ---
 
@@ -194,7 +240,7 @@ Export TrainingPeaks history now: workout-summary CSV in 12-month chunks back to
 
 ## 8. Deferred to v2+
 
-Adaptive week auto-planner (reads settings + fatigue + availability, writes `planned_workouts`); periodization projection toward race day; AI coach chat (context payload = current metrics + planned-vs-actual + feel + races + framework); power/pace-TSS load upgrade; wellness/health layer; mobile.
+Adaptive week auto-planner (reads settings + fatigue + availability, writes `planned_workouts`); periodization projection toward race day; AI coach chat (context payload = current metrics + planned-vs-actual + feel + races + framework); power/pace-TSS load upgrade; wellness/health layer; mobile. Structured-workout **builder** (author steps in-app) and **head-unit / Zwift export or push** also stay here — v1 only *imports* files (§4.5), it does not create or send them.
 
 ---
 

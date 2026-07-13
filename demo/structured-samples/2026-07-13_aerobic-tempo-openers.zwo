@@ -1,0 +1,33 @@
+<workout_file>
+  <author>Sian / Cowork</author>
+  <name>Aerobic Tempo + Openers (MTB primer, dialed-back)</name>
+  <description>~1h43 aerobic session, ~5-6 days out from MTB race. Sweet-spot base + light openers, no threshold/VO2. Built %FTP-relative. NOTE: set your app's FTP to ~205 to match the intended watts below. Intended watts @FTP205 — WU 120-145W; sweet spot 180W (~90rpm); openers 225W (seated, smooth); endurance 145W; CD to 110W. If legs feel flat, skip the openers block.</description>
+  <sportType>bike</sportType>
+  <tags/>
+  <workout>
+    <!-- Warm-up: 15 min. Ramp then 3 spin-ups -->
+    <Warmup Duration="660" PowerLow="0.585" PowerHigh="0.707">
+      <textevent timeoffset="0" message="Warm-up: relaxed ramp, settle in and check how the legs feel"/>
+    </Warmup>
+    <IntervalsT Repeat="3" OnDuration="20" OffDuration="40" OnPower="0.78" OffPower="0.68" Cadence="100" CadenceResting="90">
+      <textevent timeoffset="0" message="Spin-up: fast light legs, &gt;100rpm"/>
+    </IntervalsT>
+    <SteadyState Duration="60" Power="0.68"/>
+    <!-- Block A: 3 x 8min sweet spot @ 88% / 4min easy -->
+    <IntervalsT Repeat="3" OnDuration="480" OffDuration="240" OnPower="0.88" OffPower="0.68" Cadence="90" CadenceResting="90">
+      <textevent timeoffset="0" message="Sweet spot: comfortable-hard, conversational, ~90rpm"/>
+      <textevent timeoffset="480" message="Easy spin, recover fully"/>
+    </IntervalsT>
+    <!-- Block B: 4 x 30s openers @ 110% / 2.5min easy. Skip if flat. -->
+    <IntervalsT Repeat="4" OnDuration="30" OffDuration="150" OnPower="1.10" OffPower="0.68" Cadence="95" CadenceResting="90">
+      <textevent timeoffset="0" message="Opener: seated, smooth, just wake the legs up — not a sprint"/>
+      <textevent timeoffset="30" message="Easy spin"/>
+    </IntervalsT>
+    <!-- Endurance filler: 30 min Z2 -->
+    <SteadyState Duration="1800" Power="0.71">
+      <textevent timeoffset="0" message="Steady endurance, relaxed"/>
+    </SteadyState>
+    <!-- Cool-down: 10 min -->
+    <Cooldown Duration="600" PowerLow="0.71" PowerHigh="0.537"/>
+  </workout>
+</workout_file>

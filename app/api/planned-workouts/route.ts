@@ -17,10 +17,27 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json()
   if (isDemoMode()) {
-    const planned = demoStore.addPlanned({ date: body.date, sport: body.sport, type: body.type || 'Easy', duration_min: body.duration_min ?? null, target_load: body.target_load ?? null, description: body.description ?? null })
+    const planned = demoStore.addPlanned({
+      date: body.date,
+      sport: body.sport,
+      type: body.type || 'Easy',
+      duration_min: body.duration_min ?? null,
+      target_load: body.target_load ?? null,
+      description: body.description ?? null,
+      structured_workout_id: body.structured_workout_id ?? null,
+    })
     return NextResponse.json({ planned })
   }
-  const { data, error } = await getSupabaseAdmin().from('planned_workouts').insert({ date: body.date, sport: body.sport, type: body.type || 'Easy', duration_min: body.duration_min ?? null, target_load: body.target_load ?? null, description: body.description ?? null, status: 'planned' }).select().single()
+  const { data, error } = await getSupabaseAdmin().from('planned_workouts').insert({
+    date: body.date,
+    sport: body.sport,
+    type: body.type || 'Easy',
+    duration_min: body.duration_min ?? null,
+    target_load: body.target_load ?? null,
+    description: body.description ?? null,
+    status: 'planned',
+    structured_workout_id: body.structured_workout_id ?? null,
+  }).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ planned: data })
 }
@@ -29,10 +46,28 @@ export async function PUT(request: NextRequest) {
   const body = await request.json()
   if (!body.id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   if (isDemoMode()) {
-    const planned = demoStore.updatePlanned(body.id, { date: body.date, sport: body.sport, type: body.type, duration_min: body.duration_min, target_load: body.target_load, description: body.description, status: body.status })
+    const planned = demoStore.updatePlanned(body.id, {
+      date: body.date,
+      sport: body.sport,
+      type: body.type,
+      duration_min: body.duration_min,
+      target_load: body.target_load,
+      description: body.description,
+      status: body.status,
+      structured_workout_id: body.structured_workout_id ?? null,
+    })
     return NextResponse.json({ planned })
   }
-  const { data, error } = await getSupabaseAdmin().from('planned_workouts').update({ date: body.date, sport: body.sport, type: body.type, duration_min: body.duration_min, target_load: body.target_load, description: body.description, status: body.status }).eq('id', body.id).select().single()
+  const { data, error } = await getSupabaseAdmin().from('planned_workouts').update({
+    date: body.date,
+    sport: body.sport,
+    type: body.type,
+    duration_min: body.duration_min,
+    target_load: body.target_load,
+    description: body.description,
+    status: body.status,
+    structured_workout_id: body.structured_workout_id ?? null,
+  }).eq('id', body.id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ planned: data })
 }

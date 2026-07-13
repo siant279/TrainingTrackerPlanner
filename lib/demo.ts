@@ -4,7 +4,9 @@ import { isChilliActivity } from './chilli'
 import { activityDateKey, addCalendarDays, calendarDateKey, parseCalendarDate } from './dates'
 import { DEFAULT_FRAMEWORK } from './framework'
 import { mapStravaToActivity } from './strava-ingest'
-import type { Activity, FeelEntry, Framework, PlannedWorkout, Race, StravaActivityPayload } from './types'
+import type {
+  Activity, FeelEntry, Framework, PlannedWorkout, Race, StravaActivityPayload, StructuredWorkout,
+} from './types'
 
 export function isDemoMode(): boolean {
   if (process.env.DEMO_MODE === 'true') return true
@@ -121,7 +123,14 @@ function buildSeedPlanned(): PlannedWorkout[] {
   return []
 }
 
-type DemoStore = { activities: Activity[]; planned: PlannedWorkout[]; races: Race[]; framework: Framework; feels: FeelEntry[] }
+type DemoStore = {
+  activities: Activity[]
+  planned: PlannedWorkout[]
+  races: Race[]
+  framework: Framework
+  feels: FeelEntry[]
+  structuredWorkouts: StructuredWorkout[]
+}
 let store: DemoStore | null = null
 
 function getStore(): DemoStore {
@@ -135,6 +144,7 @@ function getStore(): DemoStore {
       ],
       framework: { ...DEFAULT_FRAMEWORK },
       feels: [],
+      structuredWorkouts: [],
     }
   }
   return store
@@ -188,7 +198,13 @@ export const demoStore = {
     return getStore().planned.filter((p) => (!from || p.date >= from) && (!to || p.date <= to))
   },
   addPlanned(row: Omit<PlannedWorkout, 'id' | 'status' | 'matched_activity_id'>) {
-    const item: PlannedWorkout = { ...row, id: `demo-p-${Date.now()}`, status: 'planned', matched_activity_id: null }
+    const item: PlannedWorkout = {
+      ...row,
+      id: `demo-p-${Date.now()}`,
+      status: 'planned',
+      matched_activity_id: null,
+      structured_workout_id: row.structured_workout_id ?? null,
+    }
     getStore().planned.push(item)
     return item
   },
@@ -200,6 +216,22 @@ export const demoStore = {
     return s.planned[idx]
   },
   deletePlanned(id: string) { getStore().planned = getStore().planned.filter((p) => p.id !== id) },
+  getStructured(id: string) {
+    return getStore().structuredWorkouts.find((w) => w.id === id) ?? null
+  },
+  listStructured(limit = 20) {
+    return getStore().structuredWorkouts.slice(-limit).reverse()
+  },
+  addStructured(row: Omit<StructuredWorkout, 'id' | 'created_at'> & { raw?: string | null }) {
+    const { raw: _raw, ...rest } = row
+    const item: StructuredWorkout = {
+      ...rest,
+      id: `demo-sw-${Date.now()}`,
+      created_at: new Date().toISOString(),
+    }
+    getStore().structuredWorkouts.push(item)
+    return item
+  },
   getRaces() { return getStore().races },
   addRace(row: Omit<Race, 'id'>) { const item = { ...row, id: `demo-r-${Date.now()}` }; getStore().races.push(item); return item },
   deleteRace(id: string) { getStore().races = getStore().races.filter((r) => r.id !== id) },

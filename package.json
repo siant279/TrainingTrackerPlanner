@@ -13,6 +13,7 @@
     "match-planned": "tsx scripts/match-planned.ts",
     "recompute-load": "tsx scripts/recompute-load.ts",
     "sync-recent": "tsx scripts/sync-recent.ts",
+    "test:structured": "tsx scripts/test-structured-zwo.ts",
     "verify-supabase": "tsx scripts/verify-supabase.ts",
     "fetch-strava-runs": "node scripts/fetch-strava-runs.mjs"
   },

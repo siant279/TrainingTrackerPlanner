@@ -54,6 +54,9 @@ export function PlannerDayEntry({ entry, framework, feelIds, onActivityClick, on
         <div className="pl-3 text-[#1e40af] font-medium truncate">
           {icon(a.sport_type)} {actName}
           {tag && <span className="ml-0.5 text-[9px] uppercase bg-black/5 px-0.5 rounded font-normal">{tag}</span>}
+          {plan.structured_workout_id && (
+            <span className="ml-0.5 text-[9px] uppercase bg-black/5 px-0.5 rounded font-normal" title="Structured target file">structured</span>
+          )}
         </div>
         <div className="pl-3 text-[9px] text-[#667085] mt-0.5">
           <span className="text-[#9a3412]">{planLabel}</span>
@@ -73,6 +76,9 @@ export function PlannerDayEntry({ entry, framework, feelIds, onActivityClick, on
       >
         {icon(p.sport)} {p.description || p.sport} ◇{p.target_load ?? 0}
         {p.duration_min != null && <span className="text-[#b45309]"> · {p.duration_min}m</span>}
+        {p.structured_workout_id && (
+          <span className="ml-0.5 text-[9px] uppercase bg-black/5 px-0.5 rounded" title="Structured target file">structured</span>
+        )}
       </div>
     )
   }

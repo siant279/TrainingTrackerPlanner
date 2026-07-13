@@ -16,7 +16,7 @@ You picked three TrainingPeaks jobs to keep, plus a "real web app" build. Mappin
 | "How fit / how tired am I" (PMC) | Fitness / Fatigue / Form curve (CTL / ATL / TSB) across all sports | Core |
 | Activity history & analysis | Auto-synced from Strava (run, ride, weights, walks) | Core |
 
-Everything else TrainingPeaks does (structured workout builder that pushes to your head unit, coach sharing, marketplace plans) is explicitly out of scope for v1 — you can add later.
+Everything else TrainingPeaks does (structured workout *builder* that pushes to your head unit, coach sharing, marketplace plans) is out of scope for v1 — you can add later. *Exception (added Jul 13): structured-workout **import** — loading an existing `.zwo`/`.erg`/`.mrc`/`.fit` file and attaching it to a planned workout — is now in v1 as M7 (spec §4.5). Only authoring and device-push stay deferred.*
 
 ## 2. The constraints that shape the design
 
@@ -157,7 +157,9 @@ Strava history you can backfill anytime via the API (it's not going away), so th
 
 **Phase 5c — Built-in AI coach chat.** A chat panel where you ask questions ("am I on track for the A race?", "why is my form negative?") and give feedback that the planner learns from. The build is a thin wrapper; the value is the *context* you feed the model — current CTL/ATL/TSB, planned vs. actual, wellness, race targets, and your framework. Design that context payload deliberately (see §10).
 
-**Phase 6 (optional, later) — precision upgrade.** Swap bike/run load to true power/pace TSS; add structured-workout templates; export a workout to your head unit if you ever want it.
+**Phase 6 (optional, later) — precision upgrade.** Swap bike/run load to true power/pace TSS; add structured-workout templates (authoring); export a workout to your head unit if you ever want it.
+
+> **Update (Jul 13):** structured-workout *import* was pulled forward into v1 as milestone M7 (see v1-Cursor-Build-Spec §4.5) — load a `.zwo`/`.erg`/`.mrc`/`.fit` file, render its target graph, and attach it to a planned workout. Only *authoring* (a builder) and *pushing to a head unit/Zwift* remain here in Phase 6. Import is cheap and independent; build/export are the expensive parts still deferred.
 
 ## 8. Effort & the honest tradeoff
 

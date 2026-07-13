@@ -9,9 +9,23 @@ import { CalendarBusyStrip } from '@/components/CalendarBusyStrip'
 import { activityDateKey, addCalendarDays, calendarDateKey, compareCalendarKeys, formatDateRange, mondayOf, parseCalendarDate } from '@/lib/dates'
 import { buildDayEntries } from '@/lib/planner-day-entries'
 import { buildDailyLoadMap, freshInterp, loadMetricsOnDate, metricsAsOfKey } from '@/lib/load'
-import type { Activity, Framework, PlannedWorkout, Race } from '@/lib/types'
+import type { Activity, Framework, PlannedWorkout, Race, StructuredStep, StructuredWorkout } from '@/lib/types'
+import { StructuredTargetChart } from '@/components/StructuredTargetChart'
 
 const SPORTS = ['Run','TrailRun','Ride','GravelRide','MountainBikeRide','VirtualRide','Swim','WeightTraining','Yoga','Other']
+const EMPTY_FORM = {
+  sport: 'Run',
+  type: 'Easy',
+  dur: '',
+  desc: '',
+  load: '',
+  structuredId: null as string | null,
+  structuredName: '' as string,
+  structuredMins: null as number | null,
+  structuredSteps: null as StructuredStep[] | null,
+  loadLocked: false,
+  displayFtp: 229,
+}
 
 const DEMO_HISTORY_START = '2026-01-01'
 const BLOCK_DAYS = 28
@@ -36,7 +50,9 @@ export function PlannerClient() {
   const [feelIds, setFeelIds] = useState<Set<number>>(new Set())
   const [modal, setModal] = useState<{ date: string; item?: PlannedWorkout } | null>(null)
   const [activityDetail, setActivityDetail] = useState<{ id: number; plan?: PlannedWorkout } | null>(null)
-  const [form, setForm] = useState({ sport: 'Run', type: 'Easy', dur: '', desc: '', load: '' })
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [fileBusy, setFileBusy] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
   const [viewBlockOffset, setViewBlockOffset] = useState(0)
   const [earliestActivity, setEarliestActivity] = useState<string | null>(null)
 
@@ -109,10 +125,84 @@ export function PlannerClient() {
     ? parseCalendarDate(metricsAsOf).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
     : null
 
-  function openAdd(date: string) { setModal({ date }); setForm({ sport: 'Run', type: 'Easy', dur: '', desc: '', load: '' }) }
+  function openAdd(date: string) {
+    setModal({ date })
+    setForm({ ...EMPTY_FORM })
+    setFileError(null)
+  }
   function openEdit(date: string, item: PlannedWorkout) {
     setModal({ date, item })
-    setForm({ sport: item.sport, type: item.type, dur: String(item.duration_min ?? ''), desc: item.description ?? '', load: String(item.target_load ?? '') })
+    setForm({
+      ...EMPTY_FORM,
+      sport: item.sport,
+      type: item.type,
+      dur: String(item.duration_min ?? ''),
+      desc: item.description ?? '',
+      load: String(item.target_load ?? ''),
+      structuredId: item.structured_workout_id,
+      structuredName: item.structured_workout_id ? 'Attached structured file' : '',
+      loadLocked: Boolean(item.target_load),
+    })
+    setFileError(null)
+    if (item.structured_workout_id) {
+      void fetch(`/api/structured-workouts?id=${item.structured_workout_id}`)
+        .then((r) => r.json())
+        .then((d: { structured?: StructuredWorkout }) => {
+          if (!d.structured) return
+          setForm((f) => ({
+            ...f,
+            structuredName: d.structured!.name,
+            structuredMins: Math.round(d.structured!.duration_sec / 60),
+            structuredSteps: d.structured!.steps,
+          }))
+        })
+        .catch(() => { /* keep stub label */ })
+    }
+  }
+
+  async function onStructuredFile(file: File | null) {
+    if (!file) return
+    setFileBusy(true)
+    setFileError(null)
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      let contents: string
+      if (ext === 'fit') {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        let binary = ''
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!)
+        contents = btoa(binary)
+      } else {
+        contents = await file.text()
+      }
+      const resp = await fetch('/api/structured-workouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, contents }),
+      })
+      const data = await resp.json() as {
+        structured?: StructuredWorkout
+        estimatedLoad?: number
+        error?: string
+      }
+      if (!resp.ok || !data.structured) throw new Error(data.error || 'Import failed')
+      const mins = Math.round(data.structured.duration_sec / 60)
+      setForm((f) => ({
+        ...f,
+        structuredId: data.structured!.id,
+        structuredName: data.structured!.name || file.name,
+        structuredMins: mins,
+        structuredSteps: data.structured!.steps,
+        sport: f.sport === 'Run' ? 'Ride' : f.sport,
+        desc: f.desc || data.structured!.name,
+        dur: f.dur || String(mins),
+        load: f.loadLocked || f.load ? f.load : String(data.estimatedLoad ?? ''),
+      }))
+    } catch (e) {
+      setFileError(e instanceof Error ? e.message : 'Import failed')
+    } finally {
+      setFileBusy(false)
+    }
   }
 
   async function savePlanned() {
@@ -125,6 +215,7 @@ export function PlannerClient() {
       duration_min: form.dur ? Number(form.dur) : null,
       description: form.desc || null,
       target_load: form.load ? Number(form.load) : null,
+      structured_workout_id: form.structuredId ?? null,
     }
     await fetch('/api/planned-workouts', { method: modal.item ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     setModal(null)
@@ -302,7 +393,7 @@ export function PlannerClient() {
 
       {modal && (
         <div className="fixed inset-0 bg-black/35 flex items-center justify-center p-4 z-10" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-xl p-4 w-80" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-xl p-4 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-semibold mb-3">{modal.item ? 'Edit' : 'Add'} planned session</h3>
             <label className="text-xs text-[#667085] font-semibold">Sport</label>
             <select className="w-full border rounded mb-2 p-2 text-sm" value={form.sport} onChange={(e) => setForm({ ...form, sport: e.target.value })}>{SPORTS.map((s) => <option key={s}>{s}</option>)}</select>
@@ -313,8 +404,62 @@ export function PlannerClient() {
             <label className="text-xs text-[#667085] font-semibold">Duration (min)</label>
             <input type="number" className="w-full border rounded mb-2 p-2 text-sm" value={form.dur} onChange={(e) => setForm({ ...form, dur: e.target.value })} />
             <label className="text-xs text-[#667085] font-semibold">Target load</label>
-            <input type="number" className="w-full border rounded mb-3 p-2 text-sm" value={form.load} onChange={(e) => setForm({ ...form, load: e.target.value })} />
-            <div className="flex justify-between">
+            <input
+              type="number"
+              className="w-full border rounded mb-2 p-2 text-sm"
+              value={form.load}
+              onChange={(e) => setForm({ ...form, load: e.target.value, loadLocked: true })}
+            />
+
+            <label className="text-xs text-[#667085] font-semibold">Attach structured file</label>
+            <input
+              type="file"
+              accept=".zwo,.mrc,.erg,.fit"
+              className="w-full border rounded mb-1 p-2 text-sm file:mr-2 file:text-xs"
+              disabled={fileBusy}
+              onChange={(e) => void onStructuredFile(e.target.files?.[0] ?? null)}
+            />
+            {fileBusy && <p className="text-xs text-[#667085] mb-1">Parsing…</p>}
+            {fileError && <p className="text-xs text-red-700 mb-1">{fileError}</p>}
+            {form.structuredId && (
+              <div className="text-xs bg-[#f0fdf4] border border-green-200 rounded p-2 mb-2 text-green-900">
+                <div className="font-semibold truncate">{form.structuredName}</div>
+                {form.structuredMins != null && <div>{form.structuredMins} min structured</div>}
+                {form.structuredSteps && form.structuredSteps.length > 0 && (
+                  <>
+                    <label className="block text-[10px] text-[#667085] mt-2 mb-0.5">
+                      Display FTP
+                      <input
+                        type="number"
+                        className="ml-2 w-16 border rounded px-1 py-0.5 text-xs"
+                        value={form.displayFtp}
+                        onChange={(e) => setForm({ ...form, displayFtp: Number(e.target.value) || 229 })}
+                      />
+                    </label>
+                    <StructuredTargetChart
+                      steps={form.structuredSteps}
+                      displayFtp={form.displayFtp}
+                      assumedFtp={205}
+                    />
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="text-[10px] text-red-700 mt-1 underline"
+                  onClick={() => setForm({
+                    ...form,
+                    structuredId: null,
+                    structuredName: '',
+                    structuredMins: null,
+                    structuredSteps: null,
+                  })}
+                >
+                  Detach
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-between mt-1">
               {modal.item && <button className="text-red-700 text-sm" onClick={deletePlanned}>Delete</button>}
               <div className="flex gap-2 ml-auto">
                 <button className="text-sm px-3 py-1 bg-gray-100 rounded" onClick={() => setModal(null)}>Cancel</button>
