@@ -1,4 +1,5 @@
 import { effectiveCategory } from './classify'
+import { getAthletePhysiology } from './athlete-physiology'
 import { activityDateKey } from './dates'
 import { getFramework } from './framework'
 import { findBestPlannedMatch } from './match-planned'
@@ -15,7 +16,8 @@ export async function ingestStravaActivity(raw: StravaActivityPayload, aspect: '
     return { ok: true, deleted: id }
   }
   const framework = await getFramework(supabase)
-  const row = mapStravaToActivity(raw, framework)
+  const phys = await getAthletePhysiology(supabase)
+  const row = mapStravaToActivity(raw, framework, phys)
   const { error } = await supabase.from('activities').upsert(row)
   if (error) throw error
 

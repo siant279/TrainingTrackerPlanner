@@ -14,10 +14,22 @@ export function DashboardClient() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
     fetch(`/api/activities?days=${windowDays + 42}`)
       .then((r) => r.json())
-      .then((d) => { setActivities(d.activities ?? []); setLoading(false) })
-      .catch((e) => { setError(String(e)); setLoading(false) })
+      .then((d) => {
+        if (cancelled) return
+        setActivities(d.activities ?? [])
+        setLoading(false)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(String(e))
+        setLoading(false)
+      })
+    return () => { cancelled = true }
   }, [windowDays])
 
   if (loading) return <p className="text-[#667085] py-10 text-center">Loading activities…</p>

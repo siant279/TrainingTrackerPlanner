@@ -1,6 +1,8 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import type { AthletePhysiologyRow } from './athlete-physiology'
 import { isChilliActivity } from './chilli'
+import { DEFAULT_PHYSIOLOGY } from './compute-load'
 import { activityDateKey, addCalendarDays, calendarDateKey, parseCalendarDate } from './dates'
 import { DEFAULT_FRAMEWORK } from './framework'
 import { mapStravaToActivity } from './strava-ingest'
@@ -26,7 +28,7 @@ function loadStravaRuns(): Activity[] {
   return runs
     .filter((r) => !isChilliActivity(r.name ?? ''))
     .map((raw) => {
-      const m = mapStravaToActivity(raw, DEFAULT_FRAMEWORK)
+      const m = mapStravaToActivity(raw, DEFAULT_FRAMEWORK, DEFAULT_PHYSIOLOGY)
       return {
         id: m.id,
         sport_type: m.sport_type,
@@ -128,6 +130,7 @@ type DemoStore = {
   planned: PlannedWorkout[]
   races: Race[]
   framework: Framework
+  physiology: AthletePhysiologyRow
   feels: FeelEntry[]
   structuredWorkouts: StructuredWorkout[]
 }
@@ -143,6 +146,7 @@ function getStore(): DemoStore {
         { id: 'demo-r2', date: '2026-10-04', name: 'Gran Fondo', sport: 'Ride', priority: 'B' },
       ],
       framework: { ...DEFAULT_FRAMEWORK },
+      physiology: { ftp: 205, threshold_pace: '5:30', lthr: 165 },
       feels: [],
       structuredWorkouts: [],
     }
@@ -194,6 +198,11 @@ export const demoStore = {
   },
   getSettings() { return getStore().framework },
   updateSettings(framework: Framework) { getStore().framework = framework; return framework },
+  getPhysiology() { return getStore().physiology },
+  updatePhysiology(physiology: AthletePhysiologyRow) {
+    getStore().physiology = physiology
+    return physiology
+  },
   getPlanned(from?: string | null, to?: string | null) {
     return getStore().planned.filter((p) => (!from || p.date >= from) && (!to || p.date <= to))
   },

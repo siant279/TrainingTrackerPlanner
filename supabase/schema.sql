@@ -7,8 +7,8 @@ create table if not exists athlete (
   strava_athlete_id bigint,
   name text,
   ftp int,
-  threshold_pace text,
-  hr_zones jsonb,
+  threshold_pace text,           -- flat threshold, e.g. "5:30" (min:sec per km)
+  hr_zones jsonb,                -- { "lthr": 165, ... } — LTHR used for Load IF
   google_refresh_token text,
   google_access_token text,
   google_token_expires_at timestamptz,

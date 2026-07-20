@@ -1,4 +1,4 @@
-import { activityDateKey, calendarDateKey, compareCalendarKeys, mondayOf, parseCalendarDate } from './dates'
+import { activityDateKey, addCalendarDays, calendarDateKey, compareCalendarKeys, mondayOf, parseCalendarDate } from './dates'
 import type { Activity, LoadSeriesPoint } from './types'
 
 export const BASE_DAYS = 42
@@ -8,7 +8,9 @@ const DAY_MS = 86400000
 export function fmtDate(d: Date) { return calendarDateKey(d) }
 export function localDay(ts: string) { return ts.slice(0, 10) }
 
-export function buildDailyLoadMap(activities: Activity[]) {
+export function buildDailyLoadMap(
+  activities: Pick<Activity, 'local_date' | 'start_local' | 'load' | 'count_toward_load'>[],
+) {
   const load: Record<string, number> = {}
   for (const a of activities) {
     if (!a.count_toward_load || (a.load ?? 0) <= 0) continue
@@ -19,13 +21,13 @@ export function buildDailyLoadMap(activities: Activity[]) {
 }
 
 export function computeLoadSeries(dailyLoadMap: Record<string, number>, windowDays: number, endDate = new Date()) {
-  const today = parseCalendarDate(calendarDateKey(endDate))
-  const totalDays = windowDays + BASE_DAYS
-  const start = new Date(today.getTime() - totalDays * DAY_MS)
+  const todayKey = calendarDateKey(endDate)
+  // Walk calendar dates (not raw ms) so DST transitions cannot skip/duplicate days.
+  let cursor = addCalendarDays(todayKey, -(windowDays + BASE_DAYS))
   const days: { date: string; load: number }[] = []
-  for (let t = start.getTime(); t <= today.getTime(); t += DAY_MS) {
-    const key = calendarDateKey(new Date(t))
-    days.push({ date: key, load: dailyLoadMap[key] ?? 0 })
+  while (compareCalendarKeys(cursor, todayKey) <= 0) {
+    days.push({ date: cursor, load: dailyLoadMap[cursor] ?? 0 })
+    cursor = addCalendarDays(cursor, 1)
   }
   const rows: LoadSeriesPoint[] = days.map((d, i) => {
     const baseSlice = days.slice(Math.max(0, i - BASE_DAYS + 1), i + 1)
@@ -62,16 +64,43 @@ export function loadMetricsOnDate(dailyLoadMap: Record<string, number>, asOfKey:
   return rows.find((r) => r.date === asOfKey) ?? rows[rows.length - 1] ?? null
 }
 
+async function fetchAllLoadActivities(
+  supabase: ReturnType<typeof import('./supabase').getSupabaseAdmin>,
+): Promise<Pick<Activity, 'local_date' | 'start_local' | 'load' | 'count_toward_load'>[]> {
+  const pageSize = 1000
+  const all: Pick<Activity, 'local_date' | 'start_local' | 'load' | 'count_toward_load'>[] = []
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('activities')
+      .select('id,local_date,start_local,load,count_toward_load')
+      .eq('count_toward_load', true)
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw new Error(`Failed to fetch activities for load recompute: ${error.message}`)
+    if (!data?.length) break
+    all.push(...data)
+    if (data.length < pageSize) break
+  }
+  return all
+}
+
 export async function recomputeDailyLoadTable(supabase: ReturnType<typeof import('./supabase').getSupabaseAdmin>) {
-  const { data: activities } = await supabase.from('activities').select('*').eq('count_toward_load', true)
-  const map = buildDailyLoadMap((activities ?? []) as Activity[])
+  const activities = await fetchAllLoadActivities(supabase)
+  const map = buildDailyLoadMap(activities)
   if (!Object.keys(map).length) return
   const dates = Object.keys(map).sort()
-  const start = parseCalendarDate(dates[0])
-  const end = new Date()
-  const { rows } = computeLoadSeries(map, Math.ceil((end.getTime() - start.getTime()) / DAY_MS) + BASE_DAYS, end)
+  const startKey = dates[0]
+  const endKey = calendarDateKey(new Date())
+  // Approximate day span for the rolling window; calendar walk inside computeLoadSeries is exact.
+  const spanDays = Math.max(
+    1,
+    Math.round((parseCalendarDate(endKey).getTime() - parseCalendarDate(startKey).getTime()) / DAY_MS),
+  )
+  const { rows } = computeLoadSeries(map, spanDays + BASE_DAYS, parseCalendarDate(endKey))
   const payload = rows.map((r) => ({ date: r.date, load: Math.round(r.load), base: r.base, tired: r.tired, rested: r.rested }))
   for (let i = 0; i < payload.length; i += 200) {
-    await supabase.from('daily_load').upsert(payload.slice(i, i + 200))
+    const chunk = payload.slice(i, i + 200)
+    const { error } = await supabase.from('daily_load').upsert(chunk)
+    if (error) throw new Error(`daily_load upsert failed: ${error.message}`)
   }
 }

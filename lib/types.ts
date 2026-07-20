@@ -60,4 +60,6 @@ export interface StravaActivityPayload {
   id: number; name?: string; description?: string; sport_type?: string; type?: string
   start_date?: string; start_date_local?: string; moving_time?: number; distance?: number
   total_elevation_gain?: number; suffer_score?: number; perceived_exertion?: number
+  average_heartrate?: number; max_heartrate?: number; has_heartrate?: boolean
+  average_watts?: number; weighted_average_watts?: number; device_watts?: boolean
 }

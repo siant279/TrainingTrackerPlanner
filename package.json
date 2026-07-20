@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
+    "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -12,8 +13,10 @@
     "import-trainingpeaks": "tsx scripts/import-trainingpeaks.ts",
     "match-planned": "tsx scripts/match-planned.ts",
     "recompute-load": "tsx scripts/recompute-load.ts",
+    "backfill-load": "tsx scripts/backfill-load.ts",
     "sync-recent": "tsx scripts/sync-recent.ts",
     "test:structured": "tsx scripts/test-structured-zwo.ts",
+    "test:load": "tsx scripts/test-compute-load.ts",
     "verify-supabase": "tsx scripts/verify-supabase.ts",
     "fetch-strava-runs": "node scripts/fetch-strava-runs.mjs"
   },

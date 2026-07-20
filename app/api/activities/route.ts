@@ -3,6 +3,10 @@ import { addCalendarDays, calendarDateKey } from '@/lib/dates'
 import { demoStore, isDemoMode } from '@/lib/demo'
 import { getSupabaseAdmin } from '@/lib/supabase'
 
+/** List views never need the bulky Strava/TP `raw` blob. */
+const ACTIVITY_LIST_SELECT =
+  'id,sport_type,start_local,local_date,moving_time,distance,elevation,relative_effort,load,category,category_override,count_toward_load,perceived_exertion,name,description'
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const from = searchParams.get('from')
@@ -22,7 +26,7 @@ export async function GET(request: NextRequest) {
   if (from && to) {
     const { data, error } = await supabase
       .from('activities')
-      .select('*')
+      .select(ACTIVITY_LIST_SELECT)
       .gte('local_date', from)
       .lte('local_date', to)
       .order('start_local', { ascending: false })
@@ -51,7 +55,7 @@ export async function GET(request: NextRequest) {
   const sinceKey = addCalendarDays(calendarDateKey(new Date()), -days)
   const { data, error } = await supabase
     .from('activities')
-    .select('*')
+    .select(ACTIVITY_LIST_SELECT)
     .gte('local_date', sinceKey)
     .order('start_local', { ascending: false })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

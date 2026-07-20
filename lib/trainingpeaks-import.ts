@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
 import { classifyActual } from './classify'
+import { computeLoad, DEFAULT_PHYSIOLOGY, type AthletePhysiology } from './compute-load'
 import { calendarDateKey } from './dates'
 import { countsTowardLoad, isExcludedSport } from './excluded-sports'
 import type { Framework } from './types'
@@ -106,12 +107,18 @@ export function localDateFromIso(isoUtc: string, tz: string): string {
   return formatLocalStart(isoUtc, tz).slice(0, 10)
 }
 
+/** Stable id key — includes title so existing imported rows keep their ids on re-import. */
 export function dedupKey(dateOrStart: string, sportType: string, movingTime: number, title = ''): string {
   const date = dateOrStart.slice(0, 10)
   const slug = title.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 48)
   return `${date}|${sportType}|${Math.round(movingTime)}|${slug}`
 }
 
+/**
+ * Session-identity key for skip-on-import. Omits title so TP exports that list the same
+ * workout twice under different names (e.g. structured virtual + "Virtual Activity") collapse.
+ * Same-day / same-sport / same-duration collisions are rare; FIT import already used this.
+ */
 export function coarseDedupKey(dateOrStart: string, sportType: string, movingTime: number): string {
   return `${dateOrStart.slice(0, 10)}|${sportType}|${Math.round(movingTime)}`
 }
@@ -133,6 +140,8 @@ export function buildActivityRow(
     distance: number | null
     elevation: number | null
     load: number
+    loadSource?: string
+    intensityFactor?: number | null
     name: string
     perceivedExertion?: number | null
     source: 'trainingpeaks-csv' | 'trainingpeaks-fit'
@@ -158,7 +167,12 @@ export function buildActivityRow(
     perceived_exertion: input.perceivedExertion ?? null,
     name: input.name,
     description: null,
-    raw: { ...input.raw, import_source: input.source },
+    raw: {
+      ...input.raw,
+      import_source: input.source,
+      load_source: input.loadSource ?? 'tss',
+      load_if: input.intensityFactor ?? null,
+    },
     updated_at: new Date().toISOString(),
   }
 }
@@ -211,6 +225,7 @@ export function rowFromCsvRecord(
   record: Record<string, string>,
   framework: Framework,
   tz: string,
+  phys: AthletePhysiology = DEFAULT_PHYSIOLOGY,
 ): TpActivityRow | null {
   const title = record.title || record.workoutdescription || 'Workout'
   const description = record.workoutdescription || ''
@@ -223,15 +238,27 @@ export function rowFromCsvRecord(
   const movingTime = parseDurationSeconds(record.workouttime, record.timetotalinhours)
   if (movingTime <= 0) return null
 
-  const tss = Number(record.tss)
-  const load = Number.isFinite(tss) && tss > 0 ? Math.round(tss) : Math.max(1, Math.round((movingTime / 3600) * 50))
-
-  const startLocal = `${day}T12:00:00`
+  const tssRaw = Number(record.tss)
+  const tss = Number.isFinite(tssRaw) && tssRaw > 0 ? tssRaw : null
   const distanceRaw = Number(record.distanceinmeters || record.distance || record.planneddistanceinmeters)
   const elevRaw = Number(record.elevationgaininmeters || record.elevationgain || record.elevation)
-  const dedup = dedupKey(day, sportType, movingTime, title)
+  const distance = Number.isFinite(distanceRaw) && distanceRaw > 0 ? distanceRaw : null
+  const elevation = Number.isFinite(elevRaw) && elevRaw > 0 ? elevRaw : null
   const rpe = Number(record.rpe)
   const perceivedExertion = Number.isFinite(rpe) && rpe > 0 ? Math.round(rpe) : null
+
+  const computed = computeLoad({
+    sportType,
+    name: title,
+    movingTimeSec: movingTime,
+    distanceM: distance,
+    elevationM: elevation,
+    perceivedExertion,
+    tss,
+  }, phys)
+
+  const startLocal = `${day}T12:00:00`
+  const dedup = dedupKey(day, sportType, movingTime, title)
 
   return buildActivityRow({
     id: stableTpId(dedup),
@@ -239,9 +266,11 @@ export function rowFromCsvRecord(
     startLocal,
     localDate: day,
     movingTime,
-    distance: Number.isFinite(distanceRaw) && distanceRaw > 0 ? distanceRaw : null,
-    elevation: Number.isFinite(elevRaw) && elevRaw > 0 ? elevRaw : null,
-    load,
+    distance,
+    elevation,
+    load: computed.load,
+    loadSource: computed.source,
+    intensityFactor: computed.intensityFactor,
     name: title,
     perceivedExertion,
     source: 'trainingpeaks-csv',

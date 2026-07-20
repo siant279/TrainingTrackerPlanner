@@ -112,6 +112,8 @@ async function main() {
   const journal = createClient(journalUrl, journalKey)
   const { data: settingsRow } = await tracker.from('settings').select('framework').eq('id', 1).single()
   const framework = parseFramework(settingsRow?.framework) as Framework
+  const { getAthletePhysiology } = await import('../lib/athlete-physiology')
+  const phys = await getAthletePhysiology(tracker)
 
   const token = await getJournalToken(journal, stravaClientId, stravaClientSecret)
   console.log('Strava token OK — fetching activities…')
@@ -136,7 +138,7 @@ async function main() {
       if (isExcludedSport(sport)) { skipped++; continue }
 
       const detail = await fetchActivityDetail(token, summary.id)
-      const row = mapStravaToActivity(detail, framework)
+      const row = mapStravaToActivity(detail, framework, phys)
       const { error } = await tracker.from('activities').upsert(row)
       if (error) throw new Error(`Upsert ${summary.id}: ${error.message}`)
       imported++

@@ -30,6 +30,7 @@ import {
   stableTpId,
   type TpActivityRow,
 } from '../lib/trainingpeaks-import'
+import { computeLoad, DEFAULT_PHYSIOLOGY } from '../lib/compute-load'
 import { isExcludedSport } from '../lib/excluded-sports'
 
 function loadEnv(path: string) {
@@ -108,10 +109,14 @@ async function importCsvText(
 
     const row = rowFromCsvRecord(record, framework, tz)
     if (!row) continue
+    // Coarse key (date|sport|duration) catches same-session rows with different titles
+    // e.g. "TrainingPeaks Virtual…" vs "Virtual Activity Cycling".
+    const coarse = coarseDedupKey(row.local_date, row.sport_type, row.moving_time)
+    if (coarseSeen.has(coarse)) continue
     const key = dedupKey(row.local_date, row.sport_type, row.moving_time, row.name)
     if (seen.has(key)) continue
     seen.add(key)
-    coarseSeen.add(coarseDedupKey(row.local_date, row.sport_type, row.moving_time))
+    coarseSeen.add(coarse)
     imported++
     pending.push(row)
     await flushIfNeeded()
@@ -164,10 +169,22 @@ function rowFromFit(
   const movingTime = Math.round(Number(session.total_timer_time || session.total_moving_time || session.total_elapsed_time || 0))
   if (movingTime <= 0) return null
 
-  const load = estimateLoadFromFit(session as { total_timer_time?: number; total_elapsed_time?: number; time_in_hr_zone?: number[] })
+  const estimated = estimateLoadFromFit(session as { total_timer_time?: number; total_elapsed_time?: number; time_in_hr_zone?: number[] })
   const distance = Number(session.total_distance)
   const elevation = Number(session.total_ascent)
   const name = entryName.replace(/\.fit(\.gz)?$/i, '').replace(/_/g, ' ')
+  const distanceM = Number.isFinite(distance) && distance > 0 ? distance : null
+  const elevationM = Number.isFinite(elevation) && elevation > 0 ? elevation : null
+  const avgHr = Number(session.avg_heart_rate)
+  const computed = computeLoad({
+    sportType,
+    name,
+    movingTimeSec: movingTime,
+    distanceM,
+    elevationM,
+    averageHeartrate: Number.isFinite(avgHr) && avgHr > 0 ? avgHr : null,
+    tss: estimated,
+  }, DEFAULT_PHYSIOLOGY)
 
   const dedup = dedupKey(localDate, sportType, movingTime, name)
   const slimSession = {
@@ -187,9 +204,11 @@ function rowFromFit(
     startLocal,
     localDate,
     movingTime,
-    distance: Number.isFinite(distance) && distance > 0 ? distance : null,
-    elevation: Number.isFinite(elevation) && elevation > 0 ? elevation : null,
-    load,
+    distance: distanceM,
+    elevation: elevationM,
+    load: computed.load,
+    loadSource: computed.source,
+    intensityFactor: computed.intensityFactor,
     name,
     source: 'trainingpeaks-fit',
     raw: { fit_file: entryName, session: slimSession },
