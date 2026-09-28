@@ -12,9 +12,10 @@ import type {
 } from './types'
 
 export function isDemoMode(): boolean {
-  if (process.env.DEMO_MODE === 'true') return true
+  // A real Supabase project stays live. DEMO_MODE=true must not swap it for sample data.
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) return false
   if (process.env.DEMO_MODE === 'false') return false
-  return !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY
+  return true
 }
 
 export const DEMO_HISTORY_START = '2026-01-01'
