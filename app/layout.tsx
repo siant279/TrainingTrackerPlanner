@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { DemoBanner } from '@/components/DemoBanner'
 import { Nav } from '@/components/Nav'
+import { authGateEnabled } from '@/lib/auth-gate'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -13,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <DemoBanner />
-        <Nav />
+        <Nav showSignOut={authGateEnabled()} />
         <main className="p-5 max-w-6xl mx-auto">{children}</main>
       </body>
     </html>

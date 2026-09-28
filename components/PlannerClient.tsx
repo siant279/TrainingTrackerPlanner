@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ActivityDetailModal } from '@/components/ActivityDetailModal'
 import { PlannerDayEntry } from '@/components/PlannerDayEntry'
 import { PlannerRaceEntry } from '@/components/PlannerRaceEntry'
@@ -13,6 +13,7 @@ import type { Activity, Framework, PlannedWorkout, Race, StructuredStep, Structu
 import { StructuredTargetChart } from '@/components/StructuredTargetChart'
 
 const SPORTS = ['Run','TrailRun','Ride','GravelRide','MountainBikeRide','VirtualRide','Swim','WeightTraining','Yoga','Other']
+const FALLBACK_DISPLAY_FTP = 229
 const EMPTY_FORM = {
   sport: 'Run',
   type: 'Easy',
@@ -23,8 +24,13 @@ const EMPTY_FORM = {
   structuredName: '' as string,
   structuredMins: null as number | null,
   structuredSteps: null as StructuredStep[] | null,
+  structuredAssumedFtp: null as number | null,
   loadLocked: false,
-  displayFtp: 229,
+  displayFtp: FALLBACK_DISPLAY_FTP,
+}
+
+function formWithFtp(displayFtp: number) {
+  return { ...EMPTY_FORM, displayFtp }
 }
 
 const DEMO_HISTORY_START = '2026-01-01'
@@ -55,6 +61,10 @@ export function PlannerClient() {
   const [fileError, setFileError] = useState<string | null>(null)
   const [viewBlockOffset, setViewBlockOffset] = useState(0)
   const [earliestActivity, setEarliestActivity] = useState<string | null>(null)
+  const [athleteFtp, setAthleteFtp] = useState<number | null>(null)
+  const [structuredSteps, setStructuredSteps] = useState<Record<string, StructuredStep[]>>({})
+  const displayFtpDefault = athleteFtp && athleteFtp > 0 ? athleteFtp : FALLBACK_DISPLAY_FTP
+  const viewRequest = useRef(0)
 
   const todayKey = calendarDateKey(new Date())
   const week0Key = calendarDateKey(mondayOf(parseCalendarDate(todayKey)))
@@ -67,6 +77,7 @@ export function PlannerClient() {
   const canGoLater = compareCalendarKeys(viewEndKey, planEnd) < 0
 
   const loadViewData = useCallback(async () => {
+    const requestId = ++viewRequest.current
     const from = viewStartKey
     const to = viewEndKey
     const [planR, calR, raceR] = await Promise.all([
@@ -74,9 +85,33 @@ export function PlannerClient() {
       fetch(`/api/calendar/events?from=${from}&to=${to}`).then((r) => r.json()).catch(() => ({ events: [] })),
       fetch('/api/races').then((r) => r.json()),
     ])
-    setPlanned(planR.planned ?? [])
+    if (requestId !== viewRequest.current) return
+    const plans: PlannedWorkout[] = planR.planned ?? []
+    setPlanned(plans)
     setRaces(raceR.races ?? [])
     if (framework) setBusy(buildBusyMap(calR.events ?? [], framework))
+
+    const ids = [...new Set(plans.flatMap((p) => (p.structured_workout_id ? [p.structured_workout_id] : [])))]
+    if (!ids.length) {
+      setStructuredSteps({})
+      return
+    }
+    const loaded = await Promise.all(ids.map(async (id) => {
+      try {
+        const res = await fetch(`/api/structured-workouts?id=${encodeURIComponent(id)}`)
+        if (!res.ok) return null
+        const data = await res.json() as { structured?: StructuredWorkout }
+        return data.structured ?? null
+      } catch {
+        return null
+      }
+    }))
+    if (requestId !== viewRequest.current) return
+    const next: Record<string, StructuredStep[]> = {}
+    for (const row of loaded) {
+      if (row && row.steps.length > 0) next[row.id] = row.steps
+    }
+    setStructuredSteps(next)
   }, [viewStartKey, viewEndKey, framework])
 
   const loadAll = useCallback(async () => {
@@ -91,6 +126,8 @@ export function PlannerClient() {
     if (actR.earliest) setEarliestActivity(actR.earliest)
     setRaces(raceR.races ?? [])
     setFramework(setR.framework)
+    const ftp = setR.physiology?.ftp
+    setAthleteFtp(typeof ftp === 'number' && ftp > 0 ? ftp : null)
     const logged = new Set<number>((feelR.feels ?? []).map((f: { activity_id: number }) => f.activity_id))
     setFeelIds(logged)
   }, [todayKey])
@@ -127,13 +164,13 @@ export function PlannerClient() {
 
   function openAdd(date: string) {
     setModal({ date })
-    setForm({ ...EMPTY_FORM })
+    setForm(formWithFtp(displayFtpDefault))
     setFileError(null)
   }
   function openEdit(date: string, item: PlannedWorkout) {
     setModal({ date, item })
     setForm({
-      ...EMPTY_FORM,
+      ...formWithFtp(displayFtpDefault),
       sport: item.sport,
       type: item.type,
       dur: String(item.duration_min ?? ''),
@@ -154,6 +191,7 @@ export function PlannerClient() {
             structuredName: d.structured!.name,
             structuredMins: Math.round(d.structured!.duration_sec / 60),
             structuredSteps: d.structured!.steps,
+            structuredAssumedFtp: d.structured!.ftp_reference,
           }))
         })
         .catch(() => { /* keep stub label */ })
@@ -182,7 +220,7 @@ export function PlannerClient() {
           filename: file.name,
           contents,
           // .erg prefers FTP= from the file header; .fit needs an authoring FTP for absolute watts
-          ...(ext === 'fit' ? { ftpForErg: form.displayFtp || 205 } : {}),
+          ...(ext === 'fit' ? { ftpForErg: form.displayFtp || displayFtpDefault } : {}),
         }),
       })
       const data = await resp.json() as {
@@ -198,6 +236,7 @@ export function PlannerClient() {
         structuredName: data.structured!.name || file.name,
         structuredMins: mins,
         structuredSteps: data.structured!.steps,
+        structuredAssumedFtp: data.structured!.ftp_reference,
         sport: f.sport === 'Run' ? 'Ride' : f.sport,
         desc: f.desc || data.structured!.name,
         dur: f.dur || String(mins),
@@ -249,7 +288,7 @@ export function PlannerClient() {
   return (
     <div>
       <h1 className="text-xl font-bold mb-1">Training Planner</h1>
-      <p className="text-sm text-[#667085] mb-3">Navigate weeks · click a synced workout for details & feel · walks & e-bikes excluded</p>
+      <p className="text-sm text-[#667085] mb-3">Scroll the 4-week plan · click a session for details & feel · walks & e-bikes excluded</p>
 
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <button
@@ -345,49 +384,69 @@ export function PlannerClient() {
               })}
               <span className="text-amber-700">🧈 butter</span>
             </div>
-            <div className="grid grid-cols-7 gap-1 overflow-x-auto min-w-0">
+            <div className="flex flex-col gap-2 min-w-0">
               {dateKeys.map((key) => {
                 const d = parseCalendarDate(key)
                 const dowLabel = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]
+                const monthLabel = d.toLocaleDateString(undefined, { month: 'short' })
                 const isToday = key === todayKey
                 const isPast = key < todayKey
                 const av = availabilityForDay(busy[key], framework)
                 const dayRaces = races.filter((r) => r.date === key)
+                const entries = buildDayEntries(
+                  planned.filter((p) => p.date === key),
+                  actuals[key] ?? [],
+                  framework,
+                )
                 return (
-                  <div key={key} className={`border rounded-lg p-1.5 min-h-36 flex flex-col text-xs ${isToday ? 'border-[#2563eb] shadow-[inset_0_0_0_1px_#2563eb]' : ''} ${isPast ? 'bg-[#fafbfc]' : ''} ${dayRaces.length ? 'ring-1 ring-red-200/80' : ''}`}>
-                    <div className={`flex justify-between font-semibold text-[#667085] mb-1 ${isToday ? 'text-[#2563eb]' : ''}`}>
-                      <span>{dowLabel} {d.getDate()}</span>
-                    </div>
-                    <CalendarBusyStrip blocks={busy[key]} framework={framework} />
-                    {!isPast && (
-                      <div className="text-[10px] mb-1 flex items-center gap-1" title="Free hours">
-                        <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: availColor(av.totalFreeH) }} />
-                        {av.totalFreeH.toFixed(1)}h free
-                        {av.biggest && (
-                          <span className="text-[#98a2b3]"> · {minLabel(av.biggest[0])}–{minLabel(av.biggest[1])}</span>
-                        )}
+                  <div key={key} className={`border rounded-lg px-3 py-3 ${isToday ? 'border-[#2563eb] shadow-[inset_0_0_0_1px_#2563eb] bg-white' : 'border-[#e7e9ee]'} ${isPast ? 'bg-[#fafbfc]' : 'bg-white'} ${dayRaces.length ? 'ring-1 ring-red-200/80' : ''}`}>
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 shrink-0 pt-0.5">
+                        <div className={`text-[11px] font-semibold uppercase tracking-wide ${isToday ? 'text-[#2563eb]' : 'text-[#667085]'}`}>{dowLabel}</div>
+                        <div className={`text-2xl font-semibold leading-none ${isToday ? 'text-[#2563eb]' : 'text-[#1a2230]'}`}>{d.getDate()}</div>
+                        <div className="text-[11px] text-[#667085] mt-0.5">{monthLabel}</div>
                       </div>
-                    )}
-                    <div className="flex flex-col gap-1 flex-1">
-                      {dayRaces.map((race) => (
-                        <PlannerRaceEntry key={race.id} race={race} />
-                      ))}
-                      {buildDayEntries(
-                        planned.filter((p) => p.date === key),
-                        actuals[key] ?? [],
-                        framework,
-                      ).map((entry) => (
-                        <PlannerDayEntry
-                          key={entry.kind === 'merged' ? `m-${entry.plan.id}` : entry.kind === 'planned' ? `p-${entry.plan.id}` : `a-${entry.activity.id}`}
-                          entry={entry}
-                          framework={framework}
-                          feelIds={feelIds}
-                          onActivityClick={(id, plan) => setActivityDetail({ id, plan })}
-                          onPlanClick={openEdit}
-                        />
-                      ))}
+                      <div className="flex-1 min-w-0 flex flex-col gap-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <CalendarBusyStrip blocks={busy[key]} framework={framework} />
+                            {isPast ? null : (
+                              <div className="text-xs flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[#667085]" title="Free hours">
+                                <span className="w-1.5 h-1.5 rounded-full inline-block shrink-0" style={{ background: availColor(av.totalFreeH) }} />
+                                {av.totalFreeH.toFixed(1)}h free
+                                {av.biggest ? (
+                                  <span className="text-[#98a2b3]"> · {minLabel(av.biggest[0])}–{minLabel(av.biggest[1])}</span>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="text-sm text-[#2563eb] shrink-0 px-1"
+                            onClick={() => openAdd(key)}
+                            aria-label={`Add plan for ${monthLabel} ${d.getDate()}`}
+                          >
+                            + plan
+                          </button>
+                        </div>
+                        {dayRaces.map((race) => (
+                          <PlannerRaceEntry key={race.id} race={race} />
+                        ))}
+                        {entries.map((entry) => (
+                          <PlannerDayEntry
+                            key={entry.kind === 'merged' ? `m-${entry.plan.id}` : entry.kind === 'planned' ? `p-${entry.plan.id}` : `a-${entry.activity.id}`}
+                            entry={entry}
+                            framework={framework}
+                            feelIds={feelIds}
+                            structuredSteps={entry.kind === 'actual' || !entry.plan.structured_workout_id
+                              ? null
+                              : structuredSteps[entry.plan.structured_workout_id] ?? null}
+                            onActivityClick={(id, plan) => setActivityDetail({ id, plan })}
+                            onPlanClick={openEdit}
+                          />
+                        ))}
+                      </div>
                     </div>
-                    <button className="text-[#2563eb] text-left mt-1" onClick={() => openAdd(key)}>+ plan</button>
                   </div>
                 )
               })}
@@ -438,13 +497,21 @@ export function PlannerClient() {
                         type="number"
                         className="ml-2 w-16 border rounded px-1 py-0.5 text-xs"
                         value={form.displayFtp}
-                        onChange={(e) => setForm({ ...form, displayFtp: Number(e.target.value) || 229 })}
+                        onChange={(e) => {
+                          const next = Number(e.target.value)
+                          setForm({ ...form, displayFtp: Number.isFinite(next) && next > 0 ? next : displayFtpDefault })
+                        }}
                       />
                     </label>
+                    <p className="text-[10px] text-[#667085] mb-1">
+                      {athleteFtp
+                        ? `Starts from your Settings FTP (${athleteFtp}). Change it for this file only.`
+                        : 'No FTP saved in Settings. This number is for this file only.'}
+                    </p>
                     <StructuredTargetChart
                       steps={form.structuredSteps}
                       displayFtp={form.displayFtp}
-                      assumedFtp={205}
+                      assumedFtp={form.structuredAssumedFtp ?? 205}
                     />
                   </>
                 )}
@@ -457,6 +524,7 @@ export function PlannerClient() {
                     structuredName: '',
                     structuredMins: null,
                     structuredSteps: null,
+                    structuredAssumedFtp: null,
                   })}
                 >
                   Detach

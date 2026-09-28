@@ -10,16 +10,15 @@ const PRIORITY_STYLE: Record<string, string> = {
 
 export function PlannerRaceEntry({ race }: { race: Race }) {
   const style = PRIORITY_STYLE[race.priority] ?? PRIORITY_STYLE.B
-  const name = race.name.length > 20 ? `${race.name.slice(0, 20)}…` : race.name
 
   return (
     <div
-      className={`rounded px-1 py-0.5 border text-[10px] leading-tight ${style}`}
+      className={`rounded-lg px-3 py-2 border text-sm leading-snug ${style}`}
       title={`${race.name} · ${race.priority}-race${race.sport ? ` · ${race.sport}` : ''}`}
     >
-      <span className="font-semibold">🏁 {name}</span>
-      <span className="ml-1 opacity-80">{race.priority}</span>
-      {race.sport && <span className="block text-[9px] opacity-70 truncate">{race.sport}</span>}
+      <span className="font-semibold">🏁 {race.name}</span>
+      <span className="ml-2 text-xs opacity-80">{race.priority}</span>
+      {race.sport ? <span className="ml-2 text-xs opacity-70">{race.sport}</span> : null}
     </div>
   )
 }
