@@ -6,6 +6,7 @@ import { DEFAULT_PHYSIOLOGY } from './compute-load'
 import { activityDateKey, addCalendarDays, calendarDateKey, parseCalendarDate } from './dates'
 import { DEFAULT_FRAMEWORK } from './framework'
 import { mapStravaToActivity } from './strava-ingest'
+import { estimateStructuredLoad, parseStructuredFile } from './structured-workout'
 import type {
   Activity, FeelEntry, Framework, PlannedWorkout, Race, StravaActivityPayload, StructuredWorkout,
 } from './types'
@@ -121,8 +122,49 @@ function buildSeedActivities(): Activity[] {
   return [...stravaRuns, ...synthetic, pinnedStrength].sort((a, b) => b.start_local.localeCompare(a.start_local))
 }
 
-function buildSeedPlanned(): PlannedWorkout[] {
-  return []
+/** Demo-only: attach the sample .zwo so a planner day shows its shape. */
+function buildSeedStructured(todayKey: string): { workouts: StructuredWorkout[]; planned: PlannedWorkout[] } {
+  const filename = '2026-07-13_aerobic-tempo-openers.zwo'
+  const text = readFileSync(join(process.cwd(), 'demo/structured-samples', filename), 'utf8')
+  const parsed = parseStructuredFile(filename, text)
+  const id = 'demo-sw-openers'
+  const workout: StructuredWorkout = {
+    id,
+    name: parsed.name,
+    source_format: 'zwo',
+    sport: parsed.sport,
+    ftp_reference: parsed.ftp_reference,
+    duration_sec: parsed.duration_sec,
+    target_metric: parsed.target_metric,
+    steps: parsed.steps,
+    original_filename: filename,
+  }
+  const mins = Math.round(parsed.duration_sec / 60)
+  const load = estimateStructuredLoad(parsed.steps)
+  const plannedOn = (planId: string, date: string): PlannedWorkout => ({
+    id: planId,
+    date,
+    sport: 'Ride',
+    type: 'Interval',
+    duration_min: mins,
+    target_load: load,
+    description: parsed.name,
+    status: 'planned',
+    matched_activity_id: null,
+    structured_workout_id: id,
+  })
+  let loggedDate = todayKey
+  for (let i = 0; i < 7; i++) {
+    if (parseCalendarDate(loggedDate).getDay() === 5) break
+    loggedDate = addCalendarDays(loggedDate, -1)
+  }
+  return {
+    workouts: [workout],
+    planned: [
+      plannedOn('demo-p-openers', addCalendarDays(todayKey, 1)),
+      plannedOn('demo-p-openers-logged', loggedDate),
+    ],
+  }
 }
 
 type DemoStore = {
@@ -138,9 +180,10 @@ let store: DemoStore | null = null
 
 function getStore(): DemoStore {
   if (!store) {
+    const seeded = buildSeedStructured(calendarDateKey(new Date()))
     store = {
       activities: buildSeedActivities(),
-      planned: buildSeedPlanned(),
+      planned: seeded.planned,
       races: [
         { id: 'demo-r1', date: '2026-09-13', name: 'Truckee Half', sport: 'Run', priority: 'A' },
         { id: 'demo-r2', date: '2026-10-04', name: 'Gran Fondo', sport: 'Ride', priority: 'B' },
@@ -148,7 +191,7 @@ function getStore(): DemoStore {
       framework: { ...DEFAULT_FRAMEWORK },
       physiology: { ftp: 205, threshold_pace: '5:30', lthr: 165 },
       feels: [],
-      structuredWorkouts: [],
+      structuredWorkouts: seeded.workouts,
     }
   }
   return store
